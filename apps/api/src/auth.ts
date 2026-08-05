@@ -1,11 +1,15 @@
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Db } from "./db/index.js";
+import { sendMail } from "./mail.js";
 import { getSettings } from "./settings.js";
 
-const { users, authSessions, collections } = schema;
+const { users, authSessions, collections, passwordResets } = schema;
+
+/** Sentinel password hash for accounts created via OAuth (no password yet). */
+export const OAUTH_ONLY = "!oauth";
 
 const SESSION_DAYS = 30;
 
@@ -15,9 +19,26 @@ const credentialsSchema = z.object({
   name: z.string().min(1).max(100).optional(),
 });
 
-function hashPassword(password: string): string {
+export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
   return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`;
+}
+
+/** Base URL of the web app for links/redirects (settings, else local dev). */
+export async function webBaseUrl(db: Db): Promise<string> {
+  return (await getSettings(db)).publicUrl ?? "http://localhost:3000";
+}
+
+/** Create a one-hour reset token for a user and return the reset URL. */
+export async function createResetLink(db: Db, userId: string): Promise<string> {
+  const token = randomBytes(32).toString("hex");
+  await db.delete(passwordResets).where(lt(passwordResets.expiresAt, new Date().toISOString()));
+  await db.insert(passwordResets).values({
+    tokenHash: createHash("sha256").update(token).digest("hex"),
+    userId,
+    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+  });
+  return `${await webBaseUrl(db)}/reset?token=${token}`;
 }
 
 function verifyPassword(password: string, stored: string): boolean {
@@ -68,7 +89,7 @@ export async function requireAdmin(db: Db, req: FastifyRequest, reply: FastifyRe
   return user;
 }
 
-async function createSession(db: Db, userId: string) {
+export async function createSession(db: Db, userId: string) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000).toISOString();
   await db.delete(authSessions).where(lt(authSessions.expiresAt, new Date().toISOString()));
@@ -168,6 +189,76 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (Object.keys(updates).length) await db.update(users).set(updates).where(eq(users.id, user.id));
     const [row] = await db.select().from(users).where(eq(users.id, user.id));
     return { ...user, handle: row?.handle ?? null, profilePublic: row?.profilePublic === "true" };
+  });
+
+  /** Public instance flags the login/register UI needs before auth. */
+  app.get("/api/config", async () => {
+    const s = await getSettings(db);
+    return {
+      githubOauth: !!(s.githubClientId && s.githubClientSecret),
+      allowRegistration: s.allowRegistration,
+    };
+  });
+
+  const changeSchema = z.object({ currentPassword: z.string().optional(), newPassword: z.string().min(8).max(200) });
+
+  /** Change password (signed in). OAuth-only accounts may set one without a current password. */
+  app.post("/api/auth/password", async (req, reply) => {
+    const user = await getUser(db, req);
+    if (!user) return reply.code(401).send({ error: "Sign in required" });
+    const parsed = changeSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "New password must be at least 8 characters" });
+    const [row] = await db.select().from(users).where(eq(users.id, user.id));
+    if (!row) return reply.code(404).send({ error: "User not found" });
+    if (row.passwordHash !== OAUTH_ONLY) {
+      if (!parsed.data.currentPassword || !verifyPassword(parsed.data.currentPassword, row.passwordHash)) {
+        return reply.code(403).send({ error: "Current password is incorrect" });
+      }
+    }
+    await db.update(users).set({ passwordHash: hashPassword(parsed.data.newPassword) }).where(eq(users.id, user.id));
+    // Sign out every other session for this user.
+    const header = req.headers.authorization!.slice(7);
+    await db.delete(authSessions).where(and(eq(authSessions.userId, user.id), ne(authSessions.token, header)));
+    return { ok: true };
+  });
+
+  /** Request a reset. Response is identical whether or not the account exists. */
+  app.post("/api/auth/forgot", async (req, reply) => {
+    const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Email required" });
+    const [user] = await db.select().from(users).where(eq(users.email, parsed.data.email.toLowerCase()));
+    let emailSent = false;
+    if (user) {
+      const url = await createResetLink(db, user.id);
+      emailSent = await sendMail(
+        db,
+        user.email,
+        "Reset your MySTic password",
+        `Someone (hopefully you) requested a password reset for your MySTic account.\n\nReset it here (link valid for 1 hour):\n${url}\n\nIf this wasn't you, ignore this email.`,
+      ).catch((err) => {
+        console.error("[mail]", err);
+        return false;
+      });
+    }
+    const s = await getSettings(db);
+    return { ok: true, emailConfigured: !!s.smtpHost && emailSent !== false };
+  });
+
+  /** Complete a reset with the token from the link. */
+  app.post("/api/auth/reset", async (req, reply) => {
+    const parsed = z
+      .object({ token: z.string().min(10), newPassword: z.string().min(8).max(200) })
+      .safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "New password must be at least 8 characters" });
+    const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
+    const [reset] = await db.select().from(passwordResets).where(eq(passwordResets.tokenHash, tokenHash));
+    if (!reset || new Date(reset.expiresAt).getTime() < Date.now()) {
+      return reply.code(400).send({ error: "This reset link is invalid or has expired — request a new one" });
+    }
+    await db.update(users).set({ passwordHash: hashPassword(parsed.data.newPassword) }).where(eq(users.id, reset.userId));
+    await db.delete(passwordResets).where(eq(passwordResets.userId, reset.userId));
+    await db.delete(authSessions).where(eq(authSessions.userId, reset.userId));
+    return { ok: true };
   });
 
   /** Public profile: the user's public collections, if they opted in. */

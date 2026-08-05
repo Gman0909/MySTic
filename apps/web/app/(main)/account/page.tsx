@@ -101,6 +101,59 @@ export default function AccountPage() {
         </p>
       )}
       {!profile.handle && <p className="muted">Set a handle first, then enable the profile.</p>}
+      <ChangePassword />
     </div>
+  );
+}
+
+function ChangePassword() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api("/api/auth/password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword: current || undefined, newPassword: next }),
+      });
+      setMsg({ ok: true, text: "Password updated. Other sessions have been signed out." });
+      setCurrent("");
+      setNext("");
+    } catch (err) {
+      setMsg({ ok: false, text: (err as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>Change password</h2>
+      <form onSubmit={submit} className="auth-form">
+        <input
+          type="password"
+          placeholder="Current password (leave empty if you signed up with GitHub)"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+        />
+        <input
+          type="password"
+          required
+          minLength={8}
+          placeholder="New password (min 8 characters)"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+        />
+        {msg && <p className={msg.ok ? "muted" : "error-text"}>{msg.text}</p>}
+        <button className="primary" disabled={busy || next.length < 8}>
+          {busy ? "…" : "Update password"}
+        </button>
+      </form>
+    </>
   );
 }

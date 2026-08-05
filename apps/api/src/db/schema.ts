@@ -68,6 +68,13 @@ export const settings = pgTable("settings", {
   value: jsonb("value").notNull(),
 });
 
+export const passwordResets = pgTable("password_resets", {
+  /** sha256 of the token — the raw token only ever lives in the link. */
+  tokenHash: text("token_hash").primaryKey(),
+  userId: text("user_id").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull(),
+});
+
 export const authSessions = pgTable("auth_sessions", {
   token: text("token").primaryKey(),
   userId: text("user_id").notNull(),

@@ -109,6 +109,13 @@ export async function migrate(db: Db): Promise<void> {
     );
   `);
   await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      token_hash text PRIMARY KEY,
+      user_id text NOT NULL,
+      expires_at timestamptz NOT NULL
+    );
+  `);
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS collections (
       id text PRIMARY KEY,
       slug text NOT NULL UNIQUE,

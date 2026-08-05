@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { registerAdminRoutes } from "./admin.js";
 import { registerAuthRoutes } from "./auth.js";
+import { registerOauthRoutes } from "./oauth.js";
 import { registerCollectionRoutes } from "./collections.js";
 import { registerContentRoutes } from "./content.js";
 import { createDb, migrate } from "./db/index.js";
@@ -12,6 +13,7 @@ import { ensureIndexes } from "./search.js";
 
 /** First boot on a fresh install: import the bundled site list and crawl it. */
 async function seedSites(db: Awaited<ReturnType<typeof createDb>>, jobs: JobRunner) {
+  if (process.env.MYSTIC_SKIP_SEED) return; // CI smoke tests skip the crawl
   const { schema } = await import("./db/index.js");
   const existing = await db.select().from(schema.sites);
   if (existing.length > 0) return;
@@ -40,6 +42,7 @@ async function main() {
   const jobs = new JobRunner(db);
   void seedSites(db, jobs).catch((err) => console.error("[seed]", err));
   registerAuthRoutes(app, db);
+  registerOauthRoutes(app, db);
   registerAdminRoutes(app, db);
   registerRoutes(app, db, jobs);
   registerCollectionRoutes(app, db);

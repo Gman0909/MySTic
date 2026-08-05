@@ -1,0 +1,101 @@
+name: containers
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-test-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          load: true
+          tags: mystic-api:test
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          load: true
+          tags: mystic-web:test
+          build-args: |
+            NEXT_PUBLIC_API_URL=http://localhost:4000
+
+      - name: Smoke test — API against Postgres + Meilisearch
+        run: |
+          set -e
+          docker network create mystic
+          docker run -d --name pg --network mystic \
+            -e POSTGRES_USER=mystic -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=mystic \
+            pgvector/pgvector:pg17
+          docker run -d --name meili --network mystic \
+            -e MEILI_MASTER_KEY=ci-master-key -e MEILI_ENV=production \
+            getmeili/meilisearch:v1.15
+          sleep 12
+          docker run -d --name api --network mystic -p 4000:4000 \
+            -e DATABASE_URL=postgres://mystic:ci@pg:5432/mystic \
+            -e MEILI_URL=http://meili:7700 -e MEILI_MASTER_KEY=ci-master-key \
+            -e MYSTIC_SKIP_SEED=1 \
+            mystic-api:test
+          ok=""
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:4000/api/health > /dev/null && ok=1 && break
+            sleep 2
+          done
+          if [ -z "$ok" ]; then echo "::error::API never became healthy"; docker logs api; exit 1; fi
+          echo "API healthy"
+          # Exercise the stack: DB write via registration, Meili via search.
+          curl -sf -X POST http://localhost:4000/api/auth/register \
+            -H 'content-type: application/json' \
+            -d '{"email":"ci@test.local","password":"ci-password-123"}' | grep -q '"token"'
+          echo "registration (Postgres write + admin bootstrap) OK"
+          curl -sf 'http://localhost:4000/api/search?q=test&mode=keyword' | grep -q '"hits"'
+          echo "search (Meilisearch round-trip) OK"
+
+      - name: Smoke test — web
+        run: |
+          set -e
+          docker run -d --name web -p 3000:3000 mystic-web:test
+          ok=""
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000 > /dev/null && ok=1 && break
+            sleep 2
+          done
+          if [ -z "$ok" ]; then echo "::error::web never became healthy"; docker logs web; exit 1; fi
+          curl -sf http://localhost:3000 | grep -qi "mystic"
+          echo "web serving OK"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push images
+        if: github.event_name != 'pull_request'
+        run: |
+          set -e
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          for name in api web; do
+            docker tag mystic-$name:test ghcr.io/$OWNER/mystic-$name:latest
+            docker tag mystic-$name:test ghcr.io/$OWNER/mystic-$name:$SHORT_SHA
+            docker push ghcr.io/$OWNER/mystic-$name:latest
+            docker push ghcr.io/$OWNER/mystic-$name:$SHORT_SHA
+          done

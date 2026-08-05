@@ -45,6 +45,16 @@ export function AdminUsers() {
     }
   };
 
+  const resetLink = async (u: AdminUser) => {
+    try {
+      const res = await api<{ url: string }>(`/api/admin/users/${u.id}/reset-link`, { method: "POST" });
+      // prompt() so the admin can copy the link to hand to the user.
+      prompt(`Password-reset link for ${u.email} (valid 1 hour) — copy and send it to them:`, res.url);
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
+
   return (
     <section className="admin-section">
       <h2>Users</h2>
@@ -72,12 +82,19 @@ export function AdminUsers() {
               <td>{u.collectionCount}</td>
               <td className="muted">{new Date(u.createdAt).toLocaleDateString()}</td>
               <td>
-                {u.id !== me?.id && (
-                  <div className="row-actions">
-                    <button onClick={() => setAdmin(u, !u.isAdmin)}>{u.isAdmin ? "Revoke admin" : "Make admin"}</button>
-                    <button onClick={() => remove(u)}>Delete</button>
-                  </div>
-                )}
+                <div className="row-actions">
+                  <button onClick={() => resetLink(u)} title="Generate a password-reset link to send to this user">
+                    Reset link
+                  </button>
+                  {u.id !== me?.id && (
+                    <>
+                      <button onClick={() => setAdmin(u, !u.isAdmin)}>
+                        {u.isAdmin ? "Revoke admin" : "Make admin"}
+                      </button>
+                      <button onClick={() => remove(u)}>Delete</button>
+                    </>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

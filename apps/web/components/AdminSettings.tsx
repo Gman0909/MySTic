@@ -12,11 +12,22 @@ interface Settings {
   hasAnthropicKey: boolean;
   anthropicKeySource: "settings" | "environment" | null;
   effectiveLabeling: "local" | "claude";
+  publicUrl: string | null;
+  smtpHost: string | null;
+  smtpPort: number;
+  smtpUser: string | null;
+  smtpFrom: string | null;
+  hasSmtpPass: boolean;
+  githubClientId: string | null;
+  hasGithubSecret: boolean;
+  githubOauthReady: boolean;
 }
 
 export function AdminSettings() {
   const [s, setS] = useState<Settings | null>(null);
   const [keyInput, setKeyInput] = useState("");
+  const smtpPassState = useState("");
+  const githubSecretState = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,6 +49,60 @@ export function AdminSettings() {
   };
 
   if (!s) return null;
+
+  /** Text setting saved on blur; empty string saves null. */
+  const textRow = (
+    label: string,
+    help: string,
+    key: keyof Settings,
+    value: string | null,
+    placeholder = "",
+    type = "text",
+  ) => (
+    <label>
+      <span>
+        {label}
+        <small>{help}</small>
+      </span>
+      <input
+        type={type}
+        placeholder={placeholder}
+        defaultValue={value ?? ""}
+        onBlur={(e) => {
+          const v = e.target.value.trim() || null;
+          if (v !== (value ?? null)) save({ [key]: v });
+        }}
+      />
+    </label>
+  );
+
+  /** Write-only secret with save/clear buttons. */
+  const secretRow = (label: string, help: string, key: string, hasValue: boolean, state: [string, (v: string) => void]) => {
+    const [val, setVal] = state;
+    return (
+      <label>
+        <span>
+          {label}
+          <small>
+            {help} {hasValue ? "A value is configured — enter a new one to replace it." : "Not configured."}
+          </small>
+        </span>
+        <span className="settings-keyrow">
+          <input type="password" placeholder="••••••" value={val} onChange={(e) => setVal(e.target.value)} />
+          <button
+            disabled={!val.trim()}
+            onClick={() => {
+              save({ [key]: val.trim() });
+              setVal("");
+            }}
+          >
+            Save
+          </button>
+          {hasValue && <button onClick={() => save({ [key]: null })}>Clear</button>}
+        </span>
+      </label>
+    );
+  };
 
   return (
     <section className="admin-section">
@@ -149,6 +214,56 @@ export function AdminSettings() {
             )}
           </span>
         </label>
+
+        <h3 className="settings-subhead">Links & email</h3>
+        {textRow(
+          "Public URL",
+          "The address users reach this instance at — used in password-reset links and OAuth redirects.",
+          "publicUrl",
+          s.publicUrl,
+          "https://mystic.2i2c.org",
+        )}
+        {textRow(
+          "SMTP host",
+          "Mail server for password-reset email. Leave empty to skip email — admins can hand out reset links from the Users table instead.",
+          "smtpHost",
+          s.smtpHost,
+          "smtp.example.org",
+        )}
+        <label>
+          <span>
+            SMTP port
+            <small>587 (STARTTLS) or 465 (TLS).</small>
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={65535}
+            defaultValue={s.smtpPort}
+            onBlur={(e) => Number(e.target.value) !== s.smtpPort && save({ smtpPort: Number(e.target.value) })}
+          />
+        </label>
+        {textRow("SMTP username", "Login for the mail server (if it needs one).", "smtpUser", s.smtpUser)}
+        {secretRow("SMTP password", "Stored server-side, never shown again.", "smtpPass", s.hasSmtpPass, smtpPassState)}
+        {textRow("From address", "Sender for outgoing mail.", "smtpFrom", s.smtpFrom, "MySTic <no-reply@example.org>")}
+
+        <h3 className="settings-subhead">
+          GitHub sign-in{" "}
+          <span className="badge plain">{s.githubOauthReady ? "enabled" : "not configured"}</span>
+        </h3>
+        <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+          Create a GitHub OAuth App (Settings → Developer settings) with callback URL{" "}
+          <code>&lt;api-url&gt;/api/auth/oauth/github/callback</code>, then paste its credentials here. Accounts are
+          matched by verified GitHub email.
+        </p>
+        {textRow("Client ID", "From the GitHub OAuth App.", "githubClientId", s.githubClientId, "Iv1.…")}
+        {secretRow(
+          "Client secret",
+          "Stored server-side, never shown again.",
+          "githubClientSecret",
+          s.hasGithubSecret,
+          githubSecretState,
+        )}
       </div>
     </section>
   );
