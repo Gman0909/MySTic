@@ -60,9 +60,8 @@ if (coll?.nodeId) {
 
 if (TOKEN && coll) {
   await shot("editor", `/collections/${coll.id}`, { settle: 3000 });
-  await shot("admin", "/admin", { settle: 3000 });
 } else {
-  console.log("· skipped editor/admin shots (no MYSTIC_TOKEN)");
+  console.log("· skipped editor shot (no MYSTIC_TOKEN)");
 }
 
 await browser.close();

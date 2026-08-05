@@ -36,7 +36,7 @@ export default function HeroPage() {
       <h1 className="hero-logo">
         MyST<span>ic</span>
       </h1>
-      <p className="hero-strap">Search. Curate. Share.</p>
+      <p className="hero-strap">Search. Remix. Share.</p>
       <p className="hero-desc">
         One search box for every MyST site you care about. Find the exact section you need, drop it into a collection,
         and share a polished mini-site with your class or your lab — always up to date, because content streams live

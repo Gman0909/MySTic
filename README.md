@@ -1,6 +1,6 @@
 # MySTic ✦
 
-**Search. Curate. Share.**
+**Search. Remix. Share.**
 
 One search box for every [MyST](https://mystmd.org) site you care about. Find the exact section you need, drop it into a collection, and share a polished mini-site with your class or your lab — always up to date, because content streams live from its source.
 
@@ -26,10 +26,6 @@ MySTic is a self-hosted search and curation engine for the MyST ecosystem, built
 | A collection page, embedded live with attribution | The drag-and-drop TOC editor |
 | --- | --- |
 | ![Collection mini-site](docs/screenshots/collection.png) | ![Collection editor](docs/screenshots/editor.png) |
-
-| Admin panel: users + instance settings |
-| --- |
-| ![Admin panel](docs/screenshots/admin.png) |
 
 ## Requirements
 
