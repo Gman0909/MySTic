@@ -1,0 +1,9 @@
+node_modules
+**/node_modules
+.next
+**/.next
+.data
+.meili
+.turbo
+**/.turbo
+fixtures/mystsite/_build

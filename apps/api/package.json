@@ -1,0 +1,28 @@
+{
+  "name": "@mystic/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.15",
+    "@fastify/cors": "^10.0.1",
+    "@mystic/core": "workspace:*",
+    "@mystic/crawler": "workspace:*",
+    "@mystic/ontology": "workspace:*",
+    "drizzle-orm": "^0.38.2",
+    "fastify": "^5.2.0",
+    "meilisearch": "^0.47.0",
+    "postgres": "^3.4.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

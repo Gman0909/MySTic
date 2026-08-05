@@ -1,0 +1,16 @@
+version: 1
+project:
+  id: mystic-fixture
+  title: MySTic Fixture Site
+  description: A tiny MyST site used to test the MySTic crawler end-to-end.
+  keywords: [testing, fixtures]
+  authors:
+    - name: Ada Fixture
+  license: CC-BY-4.0
+  toc:
+    - file: index.md
+    - file: neural-networks.md
+    - file: data-cleaning.md
+site:
+  template: book-theme
+  title: MySTic Fixture Site

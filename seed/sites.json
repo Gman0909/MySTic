@@ -1,0 +1,11 @@
+[
+  { "url": "https://mystmd.org/guide", "title": "MyST Markdown Tools" },
+  { "url": "https://jupyterbook.org", "title": "Jupyter Book" },
+  { "url": "https://compass.2i2c.org", "title": "The 2i2c Team Compass" },
+  { "url": "https://docs.2i2c.org", "title": "Community Hub Guide" },
+  { "url": "https://infrastructure.2i2c.org", "title": "2i2c Infrastructure Guide" },
+  { "url": "https://projectpythia.org", "title": "Project Pythia" },
+  { "url": "https://foundations.projectpythia.org", "title": "Pythia Foundations" },
+  { "url": "https://cookbooks.projectpythia.org", "title": "Cookbooks Gallery" },
+  { "url": "https://book.cryointhecloud.com", "title": "CryoCloud" }
+]
