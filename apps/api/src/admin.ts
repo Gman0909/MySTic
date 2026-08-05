@@ -12,10 +12,13 @@ const userPatchSchema = z.object({ isAdmin: z.boolean() });
 /** Settings shown to admins — the API key is masked, never echoed back. */
 function publicSettings(s: Awaited<ReturnType<typeof getSettings>>) {
   const { anthropicApiKey, ...rest } = s;
+  const hasAnthropicKey = !!anthropicApiKey || !!process.env.ANTHROPIC_API_KEY;
   return {
     ...rest,
-    hasAnthropicKey: !!anthropicApiKey || !!process.env.ANTHROPIC_API_KEY,
+    hasAnthropicKey,
     anthropicKeySource: anthropicApiKey ? "settings" : process.env.ANTHROPIC_API_KEY ? "environment" : null,
+    /** What actually runs: local AI is the default; Claude only with a key + the toggle on. */
+    effectiveLabeling: s.aiLabeling && hasAnthropicKey ? "claude" : "local",
   };
 }
 
@@ -32,7 +35,10 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
       const issue = parsed.error.issues[0];
       return reply.code(400).send({ error: `${issue?.path.join(".")}: ${issue?.message}` });
     }
-    const next = await updateSettings(db, parsed.data);
+    const patch = { ...parsed.data };
+    // Saving a key is an explicit opt-in to Claude labeling (unless stated otherwise).
+    if (typeof patch.anthropicApiKey === "string" && patch.aiLabeling === undefined) patch.aiLabeling = true;
+    const next = await updateSettings(db, patch);
     return publicSettings(next);
   });
 

@@ -11,6 +11,7 @@ interface Settings {
   crawlConcurrency: number;
   hasAnthropicKey: boolean;
   anthropicKeySource: "settings" | "environment" | null;
+  effectiveLabeling: "local" | "claude";
 }
 
 export function AdminSettings() {
@@ -90,13 +91,23 @@ export function AdminSettings() {
         </label>
         <label className="settings-toggle">
           <span>
-            AI concept labeling
+            Concept labeling{" "}
+            <span className="badge" style={{ fontWeight: 600 }}>
+              {s.effectiveLabeling === "claude" ? "Claude" : "Local AI"}
+            </span>
             <small>
-              Use Claude to write human-friendly knowledge-tree labels. Off = local-only mode (TF-IDF labels, no
-              external AI calls). {s.hasAnthropicKey ? `Key: ${s.anthropicKeySource}.` : "No API key configured."}
+              Local AI (TF-IDF labels, no external calls) is the default and the only mode without an API key. With a
+              key, this toggle switches knowledge-tree labels to Claude-written ones.
+              {s.hasAnthropicKey ? ` Key source: ${s.anthropicKeySource}.` : ""}
             </small>
           </span>
-          <input type="checkbox" checked={s.aiLabeling} onChange={(e) => save({ aiLabeling: e.target.checked })} />
+          <input
+            type="checkbox"
+            checked={s.aiLabeling && s.hasAnthropicKey}
+            disabled={!s.hasAnthropicKey}
+            title={s.hasAnthropicKey ? "" : "Add an Anthropic API key below to enable Claude labeling"}
+            onChange={(e) => save({ aiLabeling: e.target.checked })}
+          />
         </label>
         <label className="settings-toggle">
           <span>
