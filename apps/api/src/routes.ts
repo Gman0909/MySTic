@@ -74,7 +74,7 @@ export function registerRoutes(app: FastifyInstance, db: Db, jobs: JobRunner): v
     const result = await searchSections({ q, siteId: site, tag: tags, author, limit, offset, queryVector });
     return {
       hits: result.hits,
-      estimatedTotalHits: result.estimatedTotalHits,
+      estimatedTotalHits: result.totalHits,
       facets: result.facetDistribution ?? {},
       processingTimeMs: result.processingTimeMs,
       mode: queryVector ? "hybrid" : "keyword",

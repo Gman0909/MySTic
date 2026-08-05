@@ -55,23 +55,58 @@ export interface SearchParams {
   queryVector?: number[];
 }
 
+/**
+ * Vector similarity matches EVERY doc a little, so without a floor a hybrid
+ * query "matches" the whole index. With bge-small's compressed score band,
+ * unrelated content tops out ≈0.76 and real/topical matches sit ≥0.78 —
+ * cut between the two.
+ */
+const HYBRID_SCORE_THRESHOLD = 0.78;
+
+const FACETS = ["siteTitle", "siteId", "tags", "authors", "license"];
+
 export async function searchSections(params: SearchParams) {
   const filters: string[] = [];
   if (params.siteId) filters.push(`siteId = "${params.siteId}"`);
   if (params.tag) filters.push(`tags = "${params.tag}"`);
   if (params.author) filters.push(`authors = "${params.author}"`);
-  return meili.index(SECTIONS_INDEX).search(params.q, {
-    limit: params.limit,
-    offset: params.offset,
-    filter: filters.length ? filters.join(" AND ") : undefined,
-    facets: ["siteTitle", "siteId", "tags", "authors", "license"],
+  const filter = filters.length ? filters.join(" AND ") : undefined;
+  const index = meili.index(SECTIONS_INDEX);
+  const hybridParams = params.queryVector
+    ? {
+        vector: params.queryVector,
+        hybrid: { embedder: "default", semanticRatio: 0.5 },
+        retrieveVectors: false,
+        rankingScoreThreshold: HYBRID_SCORE_THRESHOLD,
+      }
+    : undefined;
+  const pageQuery = index.search(params.q, {
+    hitsPerPage: params.limit,
+    page: Math.floor(params.offset / params.limit) + 1,
+    filter,
+    facets: FACETS,
     attributesToCrop: ["text"],
     cropLength: 40,
     attributesToHighlight: ["sectionTitle", "pageTitle", "text"],
     highlightPreTag: "<mark>",
     highlightPostTag: "</mark>",
-    ...(params.queryVector
-      ? { vector: params.queryVector, hybrid: { embedder: "default", semanticRatio: 0.5 }, retrieveVectors: false }
-      : {}),
+    ...(hybridParams ?? {}),
   });
+  if (!hybridParams) return pageQuery;
+  // For hybrid queries Meilisearch computes totalHits and facet counts over the
+  // vector candidate pool (ignoring rankingScoreThreshold) unless the requested
+  // window covers every qualifying hit — so run an ids-only full-window probe
+  // alongside the page query and take the counts from it.
+  const [page, probe] = await Promise.all([
+    pageQuery,
+    index.search(params.q, {
+      hitsPerPage: 1000, // Meilisearch's default maxTotalHits cap
+      page: 1,
+      filter,
+      facets: FACETS,
+      attributesToRetrieve: [],
+      ...hybridParams,
+    }),
+  ]);
+  return { ...page, totalHits: probe.totalHits, facetDistribution: probe.facetDistribution };
 }
