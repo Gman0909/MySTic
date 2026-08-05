@@ -106,8 +106,9 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const [existing] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
     if (existing) return reply.code(409).send({ error: "An account with this email already exists" });
 
-    const [{ count }] = (await db.execute(sql`SELECT count(*)::int AS count FROM users`)).rows as { count: number }[];
-    const isFirst = count === 0;
+    // Driver-agnostic count (db.execute() result shapes differ between PGlite and postgres-js).
+    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(users);
+    const isFirst = Number(count) === 0;
     if (!isFirst && !(await getSettings(db)).allowRegistration) {
       return reply.code(403).send({ error: "Registration is disabled on this instance" });
     }

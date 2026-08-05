@@ -77,10 +77,8 @@ export function registerOauthRoutes(app: FastifyInstance, db: Db): void {
 
         let [user] = await db.select().from(users).where(eq(users.email, email));
         if (!user) {
-          const [{ count }] = (await db.execute(sql`SELECT count(*)::int AS count FROM users`)).rows as {
-            count: number;
-          }[];
-          const isFirst = count === 0;
+          const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(users);
+          const isFirst = Number(count) === 0;
           if (!isFirst && !s.allowRegistration) return fail("Registration is disabled on this instance");
           const id = randomUUID();
           await db.insert(users).values({
