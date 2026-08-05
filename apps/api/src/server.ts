@@ -36,7 +36,7 @@ async function main() {
   await ensureIndexes();
 
   const app = Fastify({ logger: { level: "info" } });
-  await app.register(cors, { origin: true });
+  await app.register(cors, { origin: env.corsOrigins ?? true });
   const jobs = new JobRunner(db);
   void seedSites(db, jobs).catch((err) => console.error("[seed]", err));
   registerAuthRoutes(app, db);

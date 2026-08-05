@@ -76,7 +76,7 @@ pnpm + Turborepo monorepo:
 | `packages/crawler` | MyST site discovery, polite AST fetching, section extraction |
 | `packages/ontology` | Local embeddings (transformers.js), k-means clustering, labeling |
 
-Storage: **PGlite** (embedded Postgres + pgvector, in `.data/pglite/` — zero setup) and **Meilisearch** (binary in `.meili/`). For a real deployment, `docker-compose.yml` runs the same code against Postgres + the Meilisearch image — set `DATABASE_URL` and `MEILI_MASTER_KEY` (note: the Dockerfiles are currently untested).
+Storage: **PGlite** (embedded Postgres + pgvector, in `.data/pglite/` — zero setup) and **Meilisearch** (binary in `.meili/`). For a real deployment see **[DEPLOYMENT.md](DEPLOYMENT.md)** — Netlify-hosted frontend + a docker-compose backend stack (`deploy/backend/`) behind Caddy with automatic HTTPS (note: the Dockerfiles are currently untested).
 
 ### Privacy & data layout
 

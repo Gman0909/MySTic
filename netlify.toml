@@ -1,0 +1,14 @@
+# Netlify config — deploys the Next.js frontend (apps/web) only.
+# The API, Meilisearch, and Postgres run elsewhere: see DEPLOYMENT.md.
+#
+# Required Netlify environment variable (Site settings → Environment variables):
+#   NEXT_PUBLIC_API_URL = https://api.mystic.2i2c.org   (your backend URL)
+# It is baked into the client bundle at build time — redeploy after changing it.
+
+[build]
+  base = "apps/web"
+  command = "pnpm exec next build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
