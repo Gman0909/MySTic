@@ -21,7 +21,7 @@ const browser = await chromium.launch();
 const context = await browser.newContext({
   viewport: { width: 1440, height: 900 },
   deviceScaleFactor: 1.25,
-  colorScheme: "light",
+  colorScheme: "dark",
 });
 if (TOKEN) {
   await context.addInitScript((t) => localStorage.setItem("mystic-token", t), TOKEN);
