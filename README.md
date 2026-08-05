@@ -38,7 +38,7 @@ pnpm setup
 | --- | --- |
 | `pnpm start` | Starts Meilisearch, the API (`:4000`), and the web app (`:3000`) in the background; logs to `.data/logs/` |
 | `pnpm stop` | Stops everything `pnpm start` launched |
-| `pnpm update` | `git pull` + dependency refresh (restart after updating) |
+| `pnpm run update` | `git pull` + dependency refresh (restart after updating). Note the `run` — a bare `pnpm update` invokes pnpm's own dependency updater instead |
 | `pnpm setup` | First-time install (safe to re-run) |
 
 Then open **http://localhost:3000**.

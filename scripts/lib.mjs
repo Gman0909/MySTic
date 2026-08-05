@@ -73,3 +73,23 @@ export function killPid(pid) {
     return false;
   }
 }
+
+/**
+ * Kill whatever is listening on a port. Windows shell-wrapper spawns break
+ * taskkill's parent-pid tree, so port-based cleanup is the reliable fallback.
+ */
+export function killPort(port) {
+  if (isWin) {
+    spawnSync(
+      "powershell",
+      [
+        "-NoProfile",
+        "-Command",
+        `Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }`,
+      ],
+      { stdio: "ignore" },
+    );
+  } else {
+    spawnSync("sh", ["-c", `lsof -ti tcp:${port} 2>/dev/null | xargs -r kill 2>/dev/null`], { stdio: "ignore" });
+  }
+}
