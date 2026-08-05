@@ -6,6 +6,8 @@ One search box for every [MyST](https://mystmd.org) site you care about. Find th
 
 MySTic is a self-hosted search and curation engine for the MyST ecosystem, built for researchers and educators. It crawls MyST sites through their structured JSON (no HTML scraping), indexes every *section* for keyword **and** semantic search, maps concepts across communities into a knowledge tree, and lets anyone weave sections from many sites into cohesive, live-updating collections.
 
+![MySTic hero page](docs/screenshots/hero.png)
+
 ## Features
 
 - **Federated search** — Meilisearch hybrid search (keyword + local embeddings) at section granularity across every indexed site, with facets and MyST-style hover previews of live content.
@@ -13,7 +15,21 @@ MySTic is a self-hosted search and curation engine for the MyST ecosystem, built
 - **Collections** — curate pages and sections into mini-MyST sites (`/c/<slug>`) with custom names, descriptions, and drag-and-drop tables of contents. Content is embedded **by reference** and fetched live from the source (with a short cache and an offline fallback), so upstream edits appear without recrawling. Every page carries a source-attribution banner with authors and license.
 - **Sharing** — collections are public, unlisted, or private; any viewable collection can be forked. Users can enable a public profile at `/u/<handle>` listing their public collections.
 - **Accounts & admin** — email/password accounts (scrypt-hashed, no external auth service). The first account registered becomes the instance administrator and can manage sites, users, and instance settings (recrawl interval, cache TTL, AI labeling on/off, registration open/closed).
-- **Local-first AI** — embeddings run locally (bge-small via transformers.js); the only optional external AI call is concept labeling, and it can be switched off entirely.
+- **Local-first AI** — embeddings run locally (bge-small via transformers.js); the only optional external AI call is concept labeling, and local mode is the default whenever no API key is configured.
+
+## Screenshots
+
+| Hybrid search with live hover previews | Knowledge tree |
+| --- | --- |
+| ![Search results](docs/screenshots/search.png) | ![Knowledge tree](docs/screenshots/tree.png) |
+
+| A collection page, embedded live with attribution | The drag-and-drop TOC editor |
+| --- | --- |
+| ![Collection mini-site](docs/screenshots/collection.png) | ![Collection editor](docs/screenshots/editor.png) |
+
+| Admin panel: users + instance settings |
+| --- |
+| ![Admin panel](docs/screenshots/admin.png) |
 
 ## Requirements
 
@@ -94,6 +110,8 @@ pnpm -r exec tsc --noEmit        # typecheck everything
 Useful API endpoints: `GET /api/search?q=…&mode=hybrid|keyword`, `GET /api/tree`, `POST /api/sites` (admin), `POST /api/sites/:id/crawl?force=true` (admin), `POST /api/ontology/rebuild` (admin), `GET /api/content/:siteId/<slug>` (live AST).
 
 A tiny deterministic MyST site for testing lives in `fixtures/mystsite` (build with `../../node_modules/.bin/myst build --html` from that directory, serve with `node scripts/serve-fixture.mjs`).
+
+README screenshots regenerate with `node scripts/screenshots.mjs` against a running instance (`pnpm exec playwright install chromium` once first; set `MYSTIC_TOKEN` for the signed-in shots).
 
 ## Troubleshooting
 

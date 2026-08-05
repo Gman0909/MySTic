@@ -14,7 +14,10 @@ interface SearchResponse {
   estimatedTotalHits: number;
   facets: Record<string, Record<string, number>>;
   processingTimeMs: number;
+  mode: string;
 }
+
+const PAGE_SIZE = 15;
 
 /** Escape crawled text, then restore the highlight tags Meilisearch inserted. */
 function highlight(text: string): { __html: string } {
@@ -37,10 +40,15 @@ function SearchPageInner() {
   const [siteId, setSiteId] = useState<string | null>(null);
   const [tag, setTag] = useState<string | null>(null);
   const [author, setAuthor] = useState<string | null>(null);
-  const [result, setResult] = useState<SearchResponse | null>(null);
+  const [hits, setHits] = useState<Hit[]>([]);
+  const [meta, setMeta] = useState<Omit<SearchResponse, "hits"> | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [sites, setSites] = useState<SiteSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const requestId = useRef(0);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api<SiteSummary[]>("/api/sites").then(setSites).catch(() => {});
@@ -48,28 +56,54 @@ function SearchPageInner() {
 
   const siteTitles = useMemo(() => new Map(sites.map((s) => [s.id, s.title ?? s.url])), [sites]);
 
-  const runSearch = useCallback(
-    async (query: string, f: { siteId: string | null; tag: string | null; author: string | null; mode: string }) => {
-      const params = new URLSearchParams({ q: query, limit: "15", mode: f.mode });
-      if (f.siteId) params.set("site", f.siteId);
-      if (f.tag) params.set("tags", f.tag);
-      if (f.author) params.set("author", f.author);
+  const fetchPage = useCallback(
+    async (offset: number, append: boolean) => {
+      const id = ++requestId.current;
+      const p = new URLSearchParams({ q, limit: String(PAGE_SIZE), offset: String(offset), mode });
+      if (siteId) p.set("site", siteId);
+      if (tag) p.set("tags", tag);
+      if (author) p.set("author", author);
+      if (append) setLoadingMore(true);
       try {
-        setResult(await api<SearchResponse>(`/api/search?${params}`));
+        const res = await api<SearchResponse>(`/api/search?${p}`);
+        if (id !== requestId.current) return; // superseded by a newer search
         setError(null);
+        setMeta({
+          estimatedTotalHits: res.estimatedTotalHits,
+          facets: res.facets,
+          processingTimeMs: res.processingTimeMs,
+          mode: res.mode,
+        });
+        setHits((prev) => (append ? [...prev, ...res.hits] : res.hits));
+        setHasMore(res.hits.length === PAGE_SIZE);
       } catch (err) {
-        setError((err as Error).message);
+        if (id === requestId.current) setError((err as Error).message);
+      } finally {
+        if (id === requestId.current) setLoadingMore(false);
       }
     },
-    [],
+    [q, siteId, tag, author, mode],
   );
 
   useEffect(() => {
     clearTimeout(timer.current);
-    // Semantic queries take ~30ms extra; slightly longer debounce keeps typing smooth.
-    timer.current = setTimeout(() => runSearch(q, { siteId, tag, author, mode }), mode === "hybrid" ? 300 : 200);
+    timer.current = setTimeout(() => fetchPage(0, false), mode === "hybrid" ? 300 : 200);
     return () => clearTimeout(timer.current);
-  }, [q, siteId, tag, author, mode, runSearch]);
+  }, [fetchPage, mode]);
+
+  // Infinite scroll: load the next page when the sentinel scrolls into view.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !loadingMore) void fetchPage(hits.length, true);
+      },
+      { rootMargin: "600px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, hits.length, fetchPage]);
 
   const facetList = (
     name: string,
@@ -120,17 +154,17 @@ function SearchPageInner() {
       {error && <p className="error-text">Search unavailable: {error}</p>}
       <div className="layout">
         <aside className="facets">
-          {facetList("Sites", result?.facets.siteId, siteId, setSiteId, (id) => siteTitles.get(id) ?? id)}
-          {facetList("Tags", result?.facets.tags, tag, setTag)}
-          {facetList("Authors", result?.facets.authors, author, setAuthor)}
+          {facetList("Sites", meta?.facets.siteId, siteId, setSiteId, (id) => siteTitles.get(id) ?? id)}
+          {facetList("Tags", meta?.facets.tags, tag, setTag)}
+          {facetList("Authors", meta?.facets.authors, author, setAuthor)}
         </aside>
         <section>
-          {result && (
+          {meta && (
             <p className="muted" style={{ marginTop: 0 }}>
-              {result.estimatedTotalHits} sections · {result.processingTimeMs} ms
+              {meta.estimatedTotalHits} sections · {meta.processingTimeMs} ms
             </p>
           )}
-          {result?.hits.map((hit) => (
+          {hits.map((hit) => (
             <article className="result" key={hit.id}>
               <div className="crumbs">{hit.headingPath.join(" › ")}</div>
               <h2>
@@ -162,7 +196,14 @@ function SearchPageInner() {
               </div>
             </article>
           ))}
-          {result && result.hits.length === 0 && <p className="muted">No sections match.</p>}
+          {meta && hits.length === 0 && <p className="muted">No sections match.</p>}
+          <div ref={sentinelRef} />
+          {loadingMore && <p className="muted">Loading more…</p>}
+          {meta && hits.length > 0 && !hasMore && (
+            <p className="muted" style={{ textAlign: "center", margin: "1.5rem 0" }}>
+              — end of results —
+            </p>
+          )}
         </section>
       </div>
     </div>
