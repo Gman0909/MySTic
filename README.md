@@ -14,7 +14,7 @@ MySTic is a self-hosted search and curation engine for the MyST ecosystem, built
 - **Knowledge tree** — a cross-site concept map built by clustering section embeddings; labels via TF-IDF, or Claude-written when an Anthropic API key is configured.
 - **Collections** — curate pages and sections into mini-MyST sites (`/c/<slug>`) with custom names, descriptions, and drag-and-drop tables of contents. Content is embedded **by reference** and fetched live from the source (with a short cache and an offline fallback), so upstream edits appear without recrawling. Every page carries a source-attribution banner with authors and license.
 - **Sharing** — collections are public, unlisted, or private; any viewable collection can be forked. Users can enable a public profile at `/u/<handle>` listing their public collections.
-- **Accounts & admin** — email/password accounts (scrypt-hashed, no external auth service). The first account registered becomes the instance administrator and can manage sites, users, and instance settings (recrawl interval, cache TTL, AI labeling on/off, registration open/closed).
+- **Accounts & admin** — email/password accounts (scrypt-hashed) and optional **GitHub sign-in**; password change and reset (via SMTP email when configured, or admin-generated reset links when not). The first account registered becomes the instance administrator and can manage sites, users, and instance settings (recrawl interval, cache TTL, AI labeling on/off, registration open/closed, SMTP, OAuth).
 - **Local-first AI** — embeddings run locally (bge-small via transformers.js); the only optional external AI call is concept labeling, and local mode is the default whenever no API key is configured.
 
 ## Screenshots
@@ -88,7 +88,9 @@ pnpm + Turborepo monorepo:
 | `packages/crawler` | MyST site discovery, polite AST fetching, section extraction |
 | `packages/ontology` | Local embeddings (transformers.js), k-means clustering, labeling |
 
-Storage: **PGlite** (embedded Postgres + pgvector, in `.data/pglite/` — zero setup) and **Meilisearch** (binary in `.meili/`). For a real deployment see **[DEPLOYMENT.md](DEPLOYMENT.md)** — Netlify-hosted frontend + a docker-compose backend stack (`deploy/backend/`) behind Caddy with automatic HTTPS (note: the Dockerfiles are currently untested).
+Storage: **PGlite** (embedded Postgres + pgvector, in `.data/pglite/` — zero setup) and **Meilisearch** (binary in `.meili/`). For a real deployment see **[DEPLOYMENT.md](DEPLOYMENT.md)** — Netlify-hosted frontend + a docker-compose backend stack (`deploy/backend/`) behind Caddy with automatic HTTPS.
+
+Container images are **built, smoke-tested (health + registration + search against real Postgres/Meilisearch), and published by CI** on every push to main: `ghcr.io/gman0909/mystic-api` and `ghcr.io/gman0909/mystic-web` (`:latest` or a commit SHA). Note the web image bakes `NEXT_PUBLIC_API_URL` at build time — rebuild it with your own API URL for a real deployment.
 
 ### Privacy & data layout
 
@@ -119,7 +121,7 @@ README screenshots regenerate with `node scripts/screenshots.mjs` against a runn
 
 ## Roadmap
 
-Password change/reset and OAuth sign-in · deeper collection nesting · HTML-fallback crawler for non-mystmd sites · tested container images.
+API rate limiting · deeper collection nesting · HTML-fallback crawler for non-mystmd sites.
 
 ---
 

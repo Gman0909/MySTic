@@ -27,7 +27,7 @@ You need: a small VM (2 vCPU / 4 GB RAM / 20 GB disk is plenty — Hetzner CX22,
 3. Verify: `curl https://api.mystic.2i2c.org/api/health` → `{"ok":true}`.
 4. First boot imports `seed/sites.json` and starts crawling/embedding (~15–20 min; watch `docker compose logs -f api`).
 
-> ⚠️ The API Dockerfile has not yet been exercised on a real deployment — budget a few minutes for first-build surprises.
+> Images are also built, smoke-tested, and published by CI on every push: `ghcr.io/gman0909/mystic-api:latest`. To use it instead of building on the VM, replace the `build:` block in `deploy/backend/docker-compose.yml` with `image: ghcr.io/gman0909/mystic-api:latest`.
 
 ## Part 2 — Netlify frontend
 
@@ -50,8 +50,13 @@ In the Netlify team UI (same team that owns engagements.2i2c.org):
 - **Frontend**: push to `main` — Netlify auto-builds.
 - **Backend**: on the VM, `cd MySTic && git pull && cd deploy/backend && docker compose up -d --build`.
 
+## After deploying: auth polish
+
+- Set **Public URL** in Admin → Instance settings (used in password-reset links and OAuth redirects), and set the `API_PUBLIC_URL` env var on the API container (e.g. `https://api.mystic.2i2c.org`) so the GitHub OAuth callback URL is correct.
+- Optional **SMTP** settings enable password-reset email; without them, admins generate reset links from the Users table.
+- Optional **GitHub sign-in**: create a GitHub OAuth App with callback `https://api.mystic.2i2c.org/api/auth/oauth/github/callback` and paste its client id/secret into Instance settings.
+
 ## Known gaps before wide sharing
 
 - No rate limiting on the API (auth endpoints included).
-- No password change/reset flow yet.
 - Netlify deploy previews get a different origin — add their URL to `CORS_ORIGINS` if you want previews to talk to the API.
