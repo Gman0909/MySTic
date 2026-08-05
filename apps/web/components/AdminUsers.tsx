@@ -45,11 +45,15 @@ export function AdminUsers() {
     }
   };
 
-  const resetLink = async (u: AdminUser) => {
+  const newRecoveryCode = async (u: AdminUser) => {
+    if (!confirm(`Issue a new recovery code for ${u.email}? Their previous code stops working immediately.`)) return;
     try {
-      const res = await api<{ url: string }>(`/api/admin/users/${u.id}/reset-link`, { method: "POST" });
-      // prompt() so the admin can copy the link to hand to the user.
-      prompt(`Password-reset link for ${u.email} (valid 1 hour) — copy and send it to them:`, res.url);
+      const res = await api<{ recoveryCode: string }>(`/api/admin/users/${u.id}/recovery-code`, { method: "POST" });
+      // prompt() so the admin can copy the code to hand to the user out-of-band.
+      prompt(
+        `New recovery code for ${u.email} — copy and send it to them (they use it at /recover; shown only once):`,
+        res.recoveryCode,
+      );
     } catch (e) {
       alert((e as Error).message);
     }
@@ -83,8 +87,8 @@ export function AdminUsers() {
               <td className="muted">{new Date(u.createdAt).toLocaleDateString()}</td>
               <td>
                 <div className="row-actions">
-                  <button onClick={() => resetLink(u)} title="Generate a password-reset link to send to this user">
-                    Reset link
+                  <button onClick={() => newRecoveryCode(u)} title="Issue a new recovery code to hand to this user">
+                    Recovery code
                   </button>
                   {u.id !== me?.id && (
                     <>

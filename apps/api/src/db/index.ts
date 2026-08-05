@@ -108,13 +108,8 @@ export async function migrate(db: Db): Promise<void> {
       value jsonb NOT NULL
     );
   `);
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS password_resets (
-      token_hash text PRIMARY KEY,
-      user_id text NOT NULL,
-      expires_at timestamptz NOT NULL
-    );
-  `);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_hash text;`);
+  await db.execute(sql`DROP TABLE IF EXISTS password_resets;`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS collections (
       id text PRIMARY KEY,

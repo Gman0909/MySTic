@@ -57,6 +57,8 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
   isAdmin: text("is_admin").notNull().default("false"),
+  /** Hash of the account recovery code (shown once at creation; null until generated for OAuth users). */
+  recoveryHash: text("recovery_hash"),
   /** Opt-in public profile: /u/<handle> lists the user's public collections. */
   handle: text("handle").unique(),
   profilePublic: text("profile_public").notNull().default("false"),
@@ -68,12 +70,6 @@ export const settings = pgTable("settings", {
   value: jsonb("value").notNull(),
 });
 
-export const passwordResets = pgTable("password_resets", {
-  /** sha256 of the token — the raw token only ever lives in the link. */
-  tokenHash: text("token_hash").primaryKey(),
-  userId: text("user_id").notNull(),
-  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull(),
-});
 
 export const authSessions = pgTable("auth_sessions", {
   token: text("token").primaryKey(),

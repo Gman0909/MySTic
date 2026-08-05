@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/auth";
+import { RecoveryCodeCard } from "@/components/RecoveryCode";
 import { api } from "@/lib/api";
 
 interface Profile {
@@ -102,7 +103,49 @@ export default function AccountPage() {
       )}
       {!profile.handle && <p className="muted">Set a handle first, then enable the profile.</p>}
       <ChangePassword />
+      <RecoverySection />
     </div>
+  );
+}
+
+function RecoverySection() {
+  const [code, setCode] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const regenerate = async () => {
+    if (
+      !confirm(
+        "Generate a new recovery code? Your previous code (if any) stops working immediately, and the new one is shown only once.",
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      const res = await api<{ recoveryCode: string }>("/api/auth/recovery-code", { method: "POST" });
+      setCode(res.recoveryCode);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>Recovery code</h2>
+      <p className="muted">
+        Your recovery code lets you reset your password if you lose it (Sign in → "Lost password?"). It was shown once
+        when you created your account. If you've lost it — or signed up with GitHub and never had one — generate a new
+        one here.
+      </p>
+      {code ? (
+        <RecoveryCodeCard code={code} onDone={() => setCode(null)} doneLabel="Done — I've saved it" />
+      ) : (
+        <button onClick={regenerate} disabled={busy}>
+          {busy ? "…" : "Generate new recovery code"}
+        </button>
+      )}
+    </>
   );
 }
 

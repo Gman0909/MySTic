@@ -21,14 +21,8 @@ export const instanceSettingsSchema = z.object({
   allowRegistration: z.boolean().default(true),
   /** Pages fetched concurrently per crawl. Min 1, max 8 — politeness cap. */
   crawlConcurrency: z.number().int().min(1).max(8).default(4),
-  /** Public URL of the web app (used in reset links + OAuth redirects), e.g. https://mystic.2i2c.org */
+  /** Public URL of the web app (used in OAuth redirects), e.g. https://mystic.2i2c.org */
   publicUrl: z.string().url().nullable().default(null),
-  /** SMTP for password-reset email. Unset host = no email; admins hand out reset links instead. */
-  smtpHost: z.string().nullable().default(null),
-  smtpPort: z.number().int().min(1).max(65535).default(587),
-  smtpUser: z.string().nullable().default(null),
-  smtpPass: z.string().nullable().default(null),
-  smtpFrom: z.string().nullable().default(null),
   /** GitHub OAuth app for "Continue with GitHub". */
   githubClientId: z.string().nullable().default(null),
   githubClientSecret: z.string().nullable().default(null),

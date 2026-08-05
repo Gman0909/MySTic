@@ -15,7 +15,8 @@ interface AuthCtx {
   /** null = still checking the stored token */
   ready: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
+  /** Returns the one-time recovery code the API issues at registration. */
+  register: (email: string, password: string, name: string) => Promise<string>;
   logout: () => Promise<void>;
 }
 
@@ -46,12 +47,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const register = useCallback(async (email: string, password: string, name: string) => {
-    const res = await api<{ token: string; user: User }>("/api/auth/register", {
+    const res = await api<{ token: string; recoveryCode: string; user: User }>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password, name }),
     });
     setToken(res.token);
     setUser(res.user);
+    return res.recoveryCode;
   }, []);
 
   const logout = useCallback(async () => {

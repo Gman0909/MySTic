@@ -1,15 +1,30 @@
-import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { and, eq, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, eq, lt, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { schema, type Db } from "./db/index.js";
-import { sendMail } from "./mail.js";
 import { getSettings } from "./settings.js";
 
-const { users, authSessions, collections, passwordResets } = schema;
+const { users, authSessions, collections } = schema;
 
 /** Sentinel password hash for accounts created via OAuth (no password yet). */
 export const OAUTH_ONLY = "!oauth";
+
+// Recovery codes (The Wall pattern): high-entropy code shown ONCE, only its
+// hash stored; recovering rotates the code and kills every session.
+const RECOVERY_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"; // no I/L/O/U/0/1
+
+export function generateRecoveryCode(): string {
+  const bytes = randomBytes(24);
+  let s = "";
+  for (let i = 0; i < 24; i++) s += RECOVERY_ALPHABET[bytes[i]! % RECOVERY_ALPHABET.length];
+  return s.match(/.{1,4}/g)!.join("-"); // XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
+}
+
+/** Case/format-insensitive: users can paste with or without dashes. */
+export function normalizeRecoveryCode(input: string): string {
+  return input.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
 
 const SESSION_DAYS = 30;
 
@@ -29,16 +44,11 @@ export async function webBaseUrl(db: Db): Promise<string> {
   return (await getSettings(db)).publicUrl ?? "http://localhost:3000";
 }
 
-/** Create a one-hour reset token for a user and return the reset URL. */
-export async function createResetLink(db: Db, userId: string): Promise<string> {
-  const token = randomBytes(32).toString("hex");
-  await db.delete(passwordResets).where(lt(passwordResets.expiresAt, new Date().toISOString()));
-  await db.insert(passwordResets).values({
-    tokenHash: createHash("sha256").update(token).digest("hex"),
-    userId,
-    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-  });
-  return `${await webBaseUrl(db)}/reset?token=${token}`;
+/** Generate + store a fresh recovery code for a user; returns the plaintext (show once). */
+export async function rotateRecoveryCode(db: Db, userId: string): Promise<string> {
+  const code = generateRecoveryCode();
+  await db.update(users).set({ recoveryHash: hashPassword(normalizeRecoveryCode(code)) }).where(eq(users.id, userId));
+  return code;
 }
 
 function verifyPassword(password: string, stored: string): boolean {
@@ -114,20 +124,25 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     }
 
     const id = randomUUID();
+    const recoveryCode = generateRecoveryCode();
     await db.insert(users).values({
       id,
       email: email.toLowerCase(),
       name: name ?? email.split("@")[0]!,
       passwordHash: hashPassword(password),
+      recoveryHash: hashPassword(normalizeRecoveryCode(recoveryCode)),
       isAdmin: isFirst ? "true" : "false",
     });
     // Self-hosted bootstrap: the first account becomes admin and adopts any
     // collections created before accounts existed.
+    const { isNull } = await import("drizzle-orm");
     if (isFirst) await db.update(collections).set({ ownerId: id }).where(isNull(collections.ownerId));
 
     const session = await createSession(db, id);
     return reply.code(201).send({
       token: session.token,
+      // Plaintext recovery code exists only in this response — store the hash, show it once.
+      recoveryCode,
       user: { id, email: email.toLowerCase(), name: name ?? email.split("@")[0], isAdmin: isFirst },
     });
   });
@@ -223,43 +238,38 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     return { ok: true };
   });
 
-  /** Request a reset. Response is identical whether or not the account exists. */
-  app.post("/api/auth/forgot", async (req, reply) => {
-    const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: "Email required" });
+  /**
+   * Account recovery: email + recovery code + new password. On success the
+   * password is set, a NEW recovery code is issued (the old one is spent),
+   * and every session is signed out.
+   */
+  app.post("/api/auth/recover", async (req, reply) => {
+    const parsed = z
+      .object({
+        email: z.string().email(),
+        recoveryCode: z.string().min(10),
+        newPassword: z.string().min(8).max(200),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Email, recovery code, and a new password (8+ chars) required" });
     const [user] = await db.select().from(users).where(eq(users.email, parsed.data.email.toLowerCase()));
-    let emailSent = false;
-    if (user) {
-      const url = await createResetLink(db, user.id);
-      emailSent = await sendMail(
-        db,
-        user.email,
-        "Reset your MySTic password",
-        `Someone (hopefully you) requested a password reset for your MySTic account.\n\nReset it here (link valid for 1 hour):\n${url}\n\nIf this wasn't you, ignore this email.`,
-      ).catch((err) => {
-        console.error("[mail]", err);
-        return false;
-      });
+    const supplied = normalizeRecoveryCode(parsed.data.recoveryCode);
+    if (!user?.recoveryHash || !supplied || !verifyPassword(supplied, user.recoveryHash)) {
+      return reply.code(401).send({ error: "That email and recovery code don't match" });
     }
-    const s = await getSettings(db);
-    return { ok: true, emailConfigured: !!s.smtpHost && emailSent !== false };
+    await db.update(users).set({ passwordHash: hashPassword(parsed.data.newPassword) }).where(eq(users.id, user.id));
+    const recoveryCode = await rotateRecoveryCode(db, user.id);
+    // Assume compromise: kill every session, including an attacker's.
+    await db.delete(authSessions).where(eq(authSessions.userId, user.id));
+    return { ok: true, recoveryCode };
   });
 
-  /** Complete a reset with the token from the link. */
-  app.post("/api/auth/reset", async (req, reply) => {
-    const parsed = z
-      .object({ token: z.string().min(10), newPassword: z.string().min(8).max(200) })
-      .safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: "New password must be at least 8 characters" });
-    const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
-    const [reset] = await db.select().from(passwordResets).where(eq(passwordResets.tokenHash, tokenHash));
-    if (!reset || new Date(reset.expiresAt).getTime() < Date.now()) {
-      return reply.code(400).send({ error: "This reset link is invalid or has expired — request a new one" });
-    }
-    await db.update(users).set({ passwordHash: hashPassword(parsed.data.newPassword) }).where(eq(users.id, reset.userId));
-    await db.delete(passwordResets).where(eq(passwordResets.userId, reset.userId));
-    await db.delete(authSessions).where(eq(authSessions.userId, reset.userId));
-    return { ok: true };
+  /** Rotate the signed-in user's recovery code (shown once in the response). */
+  app.post("/api/auth/recovery-code", async (req, reply) => {
+    const user = await getUser(db, req);
+    if (!user) return reply.code(401).send({ error: "Sign in required" });
+    const recoveryCode = await rotateRecoveryCode(db, user.id);
+    return { recoveryCode };
   });
 
   /** Public profile: the user's public collections, if they opted in. */

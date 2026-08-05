@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth";
+import { RecoveryCodeCard } from "@/components/RecoveryCode";
 import { api, API_URL, setToken } from "@/lib/api";
 
 export default function LoginPage() {
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [config, setConfig] = useState<{ githubOauth: boolean; allowRegistration: boolean } | null>(null);
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
 
   // OAuth hand-off: the API callback redirects here with #token=… or #oauth_error=…
   useEffect(() => {
@@ -34,6 +36,16 @@ export default function LoginPage() {
     api<{ githubOauth: boolean; allowRegistration: boolean }>("/api/config").then(setConfig).catch(() => {});
   }, []);
 
+  // A fresh registration shows the one-time recovery code before continuing.
+  if (recoveryCode) {
+    return (
+      <div className="auth-card">
+        <h1>Account created</h1>
+        <RecoveryCodeCard code={recoveryCode} onDone={() => router.push("/collections")} />
+      </div>
+    );
+  }
+
   if (user) {
     router.replace("/collections");
     return <p className="muted">Signed in — redirecting…</p>;
@@ -44,9 +56,13 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      if (mode === "login") await login(email, password);
-      else await register(email, password, name || email.split("@")[0]!);
-      router.push("/collections");
+      if (mode === "login") {
+        await login(email, password);
+        router.push("/collections");
+      } else {
+        const code = await register(email, password, name || email.split("@")[0]!);
+        setRecoveryCode(code);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -100,7 +116,7 @@ export default function LoginPage() {
       <p className="muted">
         {mode === "login" ? (
           <>
-            <Link href="/forgot">Forgot password?</Link> · No account?{" "}
+            <Link href="/recover">Lost password? Use your recovery code</Link> · No account?{" "}
             <button className="linklike" onClick={() => setMode("register")}>Create one</button>
           </>
         ) : (

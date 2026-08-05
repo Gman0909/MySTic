@@ -11,7 +11,7 @@ const userPatchSchema = z.object({ isAdmin: z.boolean() });
 
 /** Settings shown to admins — secrets are masked, never echoed back. */
 function publicSettings(s: Awaited<ReturnType<typeof getSettings>>) {
-  const { anthropicApiKey, smtpPass, githubClientSecret, ...rest } = s;
+  const { anthropicApiKey, githubClientSecret, ...rest } = s;
   const hasAnthropicKey = !!anthropicApiKey || !!process.env.ANTHROPIC_API_KEY;
   return {
     ...rest,
@@ -19,7 +19,6 @@ function publicSettings(s: Awaited<ReturnType<typeof getSettings>>) {
     anthropicKeySource: anthropicApiKey ? "settings" : process.env.ANTHROPIC_API_KEY ? "environment" : null,
     /** What actually runs: local AI is the default; Claude only with a key + the toggle on. */
     effectiveLabeling: s.aiLabeling && hasAnthropicKey ? "claude" : "local",
-    hasSmtpPass: !!smtpPass,
     hasGithubSecret: !!githubClientSecret,
     githubOauthReady: !!(s.githubClientId && githubClientSecret),
   };
@@ -79,14 +78,14 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     return { ok: true };
   });
 
-  /** Generate a password-reset link to hand to a user out-of-band. */
-  app.post<{ Params: { id: string } }>("/api/admin/users/:id/reset-link", async (req, reply) => {
+  /** Issue a fresh recovery code for a user (hand it to them out-of-band). */
+  app.post<{ Params: { id: string } }>("/api/admin/users/:id/recovery-code", async (req, reply) => {
     if (!(await requireAdmin(db, req, reply))) return;
     const [target] = await db.select().from(users).where(eq(users.id, req.params.id));
     if (!target) return reply.code(404).send({ error: "User not found" });
-    const { createResetLink } = await import("./auth.js");
-    const url = await createResetLink(db, target.id);
-    return { url, expiresInMinutes: 60 };
+    const { rotateRecoveryCode } = await import("./auth.js");
+    const recoveryCode = await rotateRecoveryCode(db, target.id);
+    return { recoveryCode };
   });
 
   /** Delete a user; their collections transfer to the acting admin. */

@@ -52,8 +52,8 @@ In the Netlify team UI (same team that owns engagements.2i2c.org):
 
 ## After deploying: auth polish
 
-- Set **Public URL** in Admin → Instance settings (used in password-reset links and OAuth redirects), and set the `API_PUBLIC_URL` env var on the API container (e.g. `https://api.mystic.2i2c.org`) so the GitHub OAuth callback URL is correct.
-- Optional **SMTP** settings enable password-reset email; without them, admins generate reset links from the Users table.
+- Set **Public URL** in Admin → Instance settings and the `API_PUBLIC_URL` env var on the API container (e.g. `https://api.mystic.2i2c.org`) so the GitHub OAuth callback URL is correct.
+- **Account recovery is code-based, no email needed**: every registration shows a one-time recovery code (usable at `/recover`); users can rotate theirs from Account settings, and admins can issue a new code from the Users table for anyone who lost both password and code.
 - Optional **GitHub sign-in**: create a GitHub OAuth App with callback `https://api.mystic.2i2c.org/api/auth/oauth/github/callback` and paste its client id/secret into Instance settings.
 
 ## Known gaps before wide sharing

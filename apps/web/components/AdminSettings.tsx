@@ -13,11 +13,6 @@ interface Settings {
   anthropicKeySource: "settings" | "environment" | null;
   effectiveLabeling: "local" | "claude";
   publicUrl: string | null;
-  smtpHost: string | null;
-  smtpPort: number;
-  smtpUser: string | null;
-  smtpFrom: string | null;
-  hasSmtpPass: boolean;
   githubClientId: string | null;
   hasGithubSecret: boolean;
   githubOauthReady: boolean;
@@ -26,7 +21,6 @@ interface Settings {
 export function AdminSettings() {
   const [s, setS] = useState<Settings | null>(null);
   const [keyInput, setKeyInput] = useState("");
-  const smtpPassState = useState("");
   const githubSecretState = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -215,37 +209,14 @@ export function AdminSettings() {
           </span>
         </label>
 
-        <h3 className="settings-subhead">Links & email</h3>
+        <h3 className="settings-subhead">Links</h3>
         {textRow(
           "Public URL",
-          "The address users reach this instance at — used in password-reset links and OAuth redirects.",
+          "The address users reach this instance at — used in OAuth redirects.",
           "publicUrl",
           s.publicUrl,
           "https://mystic.2i2c.org",
         )}
-        {textRow(
-          "SMTP host",
-          "Mail server for password-reset email. Leave empty to skip email — admins can hand out reset links from the Users table instead.",
-          "smtpHost",
-          s.smtpHost,
-          "smtp.example.org",
-        )}
-        <label>
-          <span>
-            SMTP port
-            <small>587 (STARTTLS) or 465 (TLS).</small>
-          </span>
-          <input
-            type="number"
-            min={1}
-            max={65535}
-            defaultValue={s.smtpPort}
-            onBlur={(e) => Number(e.target.value) !== s.smtpPort && save({ smtpPort: Number(e.target.value) })}
-          />
-        </label>
-        {textRow("SMTP username", "Login for the mail server (if it needs one).", "smtpUser", s.smtpUser)}
-        {secretRow("SMTP password", "Stored server-side, never shown again.", "smtpPass", s.hasSmtpPass, smtpPassState)}
-        {textRow("From address", "Sender for outgoing mail.", "smtpFrom", s.smtpFrom, "MySTic <no-reply@example.org>")}
 
         <h3 className="settings-subhead">
           GitHub sign-in{" "}

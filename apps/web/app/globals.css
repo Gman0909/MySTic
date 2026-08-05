@@ -372,6 +372,39 @@ button.linklike {
   border-top: 1px solid var(--border);
 }
 
+.recovery-card {
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  padding: 1rem 1.2rem;
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.recovery-card h3 {
+  margin: 0;
+}
+
+.recovery-code-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.recovery-code {
+  flex: 1;
+  font-size: 1.02rem;
+  letter-spacing: 0.05em;
+  background: var(--panel);
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
 /* --- public profile --------------------------------------------------- */
 
 .profile-collections {
