@@ -37,32 +37,30 @@ jobs:
 
       - name: Smoke test — API against Postgres + Meilisearch
         run: |
-          set -e
-          # Meilisearch production mode requires a master key of >= 16 bytes.
-          MEILI_KEY=ci-master-key-0123456789abcdef
+          # No `set -e`: every assertion goes through fail() so the reason is
+          # visible in annotations (Actions logs need auth to read).
+          MEILI_KEY=ci-master-key-0123456789abcdef   # Meili production mode needs >= 16 bytes
           fail() {
             echo "::error::$1"
-            for c in api meili pg; do
-              docker logs "$c" 2>&1 | tail -25 | sed "s/^/::error::[$c] /" || true
-            done
+            docker logs api 2>&1 | tail -7 | sed 's/^/::error::[api] /' || true
             exit 1
           }
-          docker network create mystic
+          docker network create mystic || fail "network create failed"
           docker run -d --name pg --network mystic \
             -e POSTGRES_USER=mystic -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=mystic \
-            pgvector/pgvector:pg17
+            pgvector/pgvector:pg17 || fail "postgres container failed to start"
           docker run -d --name meili --network mystic -p 7700:7700 \
             -e MEILI_MASTER_KEY=$MEILI_KEY -e MEILI_ENV=production \
-            getmeili/meilisearch:v1.15
+            getmeili/meilisearch:v1.15 || fail "meilisearch container failed to start"
           for i in $(seq 1 30); do docker exec pg pg_isready -U mystic > /dev/null 2>&1 && break; sleep 2; done
-          docker exec pg pg_isready -U mystic || fail "Postgres never became ready"
+          docker exec pg pg_isready -U mystic > /dev/null 2>&1 || fail "Postgres never became ready"
           for i in $(seq 1 30); do curl -sf http://localhost:7700/health > /dev/null && break; sleep 2; done
-          curl -sf http://localhost:7700/health > /dev/null || fail "Meilisearch never became ready"
+          curl -sf http://localhost:7700/health > /dev/null || fail "Meilisearch never became ready ($(docker logs meili 2>&1 | tail -2 | tr '\n' ' '))"
           docker run -d --name api --network mystic -p 4000:4000 \
             -e DATABASE_URL=postgres://mystic:ci@pg:5432/mystic \
             -e MEILI_URL=http://meili:7700 -e MEILI_MASTER_KEY=$MEILI_KEY \
             -e MYSTIC_SKIP_SEED=1 \
-            mystic-api:test
+            mystic-api:test || fail "api container failed to start"
           ok=""
           for i in $(seq 1 60); do
             curl -sf http://localhost:4000/api/health > /dev/null && ok=1 && break
@@ -70,12 +68,13 @@ jobs:
           done
           [ -n "$ok" ] || fail "API never became healthy"
           echo "API healthy"
-          # Exercise the stack: DB write via registration, Meili via search.
-          curl -sf -X POST http://localhost:4000/api/auth/register \
+          REG=$(curl -s -X POST http://localhost:4000/api/auth/register \
             -H 'content-type: application/json' \
-            -d '{"email":"ci@test.local","password":"ci-password-123"}' | grep -q '"token"'
+            -d '{"email":"ci@test.local","password":"ci-password-123"}')
+          echo "$REG" | grep -q '"token"' || fail "registration failed: $(echo "$REG" | head -c 300)"
           echo "registration (Postgres write + admin bootstrap) OK"
-          curl -sf 'http://localhost:4000/api/search?q=test&mode=keyword' | grep -q '"hits"'
+          SRCH=$(curl -s 'http://localhost:4000/api/search?q=test&mode=keyword')
+          echo "$SRCH" | grep -q '"hits"' || fail "search failed: $(echo "$SRCH" | head -c 300)"
           echo "search (Meilisearch round-trip) OK"
 
       - name: Smoke test — web
