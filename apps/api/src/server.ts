@@ -5,6 +5,7 @@ import { registerAuthRoutes } from "./auth.js";
 import { registerOauthRoutes } from "./oauth.js";
 import { registerCollectionRoutes } from "./collections.js";
 import { registerContentRoutes } from "./content.js";
+import { registerMystSiteRoutes } from "./mystsite.js";
 import { createDb, migrate } from "./db/index.js";
 import { env } from "./env.js";
 import { JobRunner } from "./jobs.js";
@@ -47,6 +48,7 @@ async function main() {
   registerRoutes(app, db, jobs);
   registerCollectionRoutes(app, db);
   registerContentRoutes(app, db);
+  registerMystSiteRoutes(app, db);
 
   // Scheduled recrawls: hourly sweep re-queues sites older than the configured
   // interval (admin-settable, min 6h — see settings.ts).

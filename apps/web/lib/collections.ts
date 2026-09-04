@@ -4,7 +4,22 @@ export interface Collection {
   name: string;
   description: string | null;
   visibility: "unlisted" | "public" | "private";
+  layout: "list" | "gallery";
   updatedAt: string;
+}
+
+/** Gallery-card metadata for one content item (GET /api/collections/:id/cards). */
+export interface CollectionCard {
+  nodeId: string;
+  parentId: string | null;
+  kind: "page" | "section";
+  title: string;
+  description: string | null;
+  thumbnail: string | null;
+  authors: string[];
+  tags: string[];
+  siteTitle: string | null;
+  sourceUrl: string | null;
 }
 
 export interface CollectionNode {
@@ -16,6 +31,8 @@ export interface CollectionNode {
   pageSlug: string | null;
   anchor: string | null;
   title: string | null;
+  /** Parts only: overrides the collection layout for this part (null = inherit). */
+  layout: "list" | "gallery" | null;
 }
 
 export interface CollectionWithNodes extends Collection {

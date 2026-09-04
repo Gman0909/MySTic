@@ -117,3 +117,88 @@ export function pageTags(fm: MystFrontmatter): string[] {
   if (typeof fm.subject === "string" && fm.subject) tags.push(fm.subject);
   return [...new Set(tags.map((t) => String(t).trim()).filter(Boolean))];
 }
+
+/** One entry of a Jupyter mime bundle as a built mystmd site serialises it. */
+interface MimeData {
+  content_type?: string;
+  /** Inline payload (text/*, image/svg+xml). */
+  content?: string;
+  /** Site-relative path to an extracted binary asset (image/png, …). */
+  path?: string;
+}
+
+interface JupyterData {
+  output_type?: string;
+  name?: string;
+  text?: string | string[];
+  ename?: string;
+  evalue?: string;
+  traceback?: string | string[];
+  data?: Record<string, MimeData>;
+}
+
+const OUTPUT_IMAGE_MIMES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+function absolute(url: string, baseUrl: string): string {
+  if (/^(https?:)?\/\//.test(url) || url.startsWith("data:")) return url;
+  return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
+/** Turn one `output` node into ordinary mdast the receiving tool can render. */
+function outputToMdast(node: MystNode, baseUrl: string): MystNode[] {
+  if (node.children?.length) return node.children;
+  const data = node.jupyter_data as JupyterData | undefined;
+  if (!data) return [];
+
+  if (data.output_type === "stream" || data.output_type === "error") {
+    // `text` and `traceback` each arrive as a string or as a list of lines
+    // depending on the producer — mystmd pre-joins tracebacks, Jupyter's own
+    // schema says they are a list — so both shapes are accepted.
+    const join = (v: string | string[] | undefined, sep: string) => (Array.isArray(v) ? v.join(sep) : v ?? "");
+    const raw =
+      data.output_type === "stream"
+        ? join(data.text, "")
+        : join(data.traceback, "\n") || `${data.ename ?? "Error"}: ${data.evalue ?? ""}`;
+    // Tracebacks arrive with terminal colour codes.
+    const value = raw.replace(/\u001b\[[0-9;]*m/g, "");
+    return value ? [{ type: "code", lang: "text", value }] : [];
+  }
+
+  const bundle = data.data ?? {};
+  const imageMime = OUTPUT_IMAGE_MIMES.find((mime) => bundle[mime]?.path || bundle[mime]?.content);
+  if (imageMime) {
+    const entry = bundle[imageMime]!;
+    const url = entry.path
+      ? absolute(entry.path, baseUrl)
+      : `data:${imageMime};base64,${(entry.content ?? "").replace(/\s+/g, "")}`;
+    return [{ type: "image", url, alt: bundle["text/plain"]?.content ?? "" }];
+  }
+  const html = bundle["text/html"]?.content ?? bundle["image/svg+xml"]?.content;
+  if (html) return [{ type: "html", value: html }];
+  const plain = bundle["text/plain"]?.content;
+  return plain ? [{ type: "code", lang: "text", value: plain }] : [];
+}
+
+/**
+ * Replace `outputs`/`output` nodes with ordinary mdast (images, code, raw HTML).
+ *
+ * A built mystmd site serves notebook outputs already minified — mime bundles
+ * of `{content}`/`{path}` objects. Feeding those back into another mystmd build
+ * crashes it, because that build re-minifies outputs and expects the raw
+ * Jupyter shape. So anything MySTic hands to another MyST tool gets its outputs
+ * flattened first. Returns a new tree; the input is not modified.
+ */
+export function materializeOutputs(node: MystNode, baseUrl: string): MystNode {
+  if (!node.children) return node;
+  const children: MystNode[] = [];
+  for (const child of node.children) {
+    if (child.type === "outputs") {
+      for (const out of child.children ?? []) children.push(...outputToMdast(out, baseUrl));
+    } else if (child.type === "output") {
+      children.push(...outputToMdast(child, baseUrl));
+    } else {
+      children.push(materializeOutputs(child, baseUrl));
+    }
+  }
+  return { ...node, children };
+}

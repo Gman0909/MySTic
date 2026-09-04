@@ -84,6 +84,8 @@ export const collections = pgTable("collections", {
   description: text("description"),
   ownerId: text("owner_id"),
   visibility: text("visibility").notNull().default("unlisted"),
+  /** How the landing page presents the contents: list (a table of contents) | gallery (cards). */
+  layout: text("layout").notNull().default("list"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
 });
@@ -100,6 +102,8 @@ export const collectionNodes = pgTable("collection_nodes", {
   anchor: text("anchor"),
   /** Part title, or title override for page/section nodes (null = upstream title). */
   title: text("title"),
+  /** Parts only: list | gallery presentation for this part's children (null = the collection's default). */
+  layout: text("layout"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
 });
 
