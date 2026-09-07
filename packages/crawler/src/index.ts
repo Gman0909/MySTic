@@ -19,10 +19,38 @@ export function normalizeSiteUrl(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { "user-agent": USER_AGENT, accept: "application/json" }, redirect: "follow" });
-  if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
-  return (await res.json()) as T;
+/** A definitive answer from the server — retrying it would not help. */
+class NonRetryableError extends Error {}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Fetch JSON, retrying transient failures with backoff.
+ *
+ * A single dropped connection used to fail a whole crawl and park the site in
+ * `error`, where nothing retried it — so one blip could freeze a site's index
+ * indefinitely. Network errors, timeouts and 5xx are retried; a 4xx is the
+ * server's final answer and is not.
+ */
+async function fetchJson<T>(url: string, attempts = 3): Promise<T> {
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { "user-agent": USER_AGENT, accept: "application/json" },
+        redirect: "follow",
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (res.ok) return (await res.json()) as T;
+      if (res.status < 500) throw new NonRetryableError(`GET ${url} -> ${res.status}`);
+      lastError = new Error(`GET ${url} -> ${res.status}`);
+    } catch (err) {
+      if (err instanceof NonRetryableError) throw err;
+      lastError = err as Error;
+    }
+    if (attempt < attempts) await sleep(500 * 2 ** (attempt - 1));
+  }
+  throw lastError ?? new Error(`GET ${url} failed`);
 }
 
 /**

@@ -52,16 +52,34 @@ async function main() {
 
   // Scheduled recrawls: hourly sweep re-queues sites older than the configured
   // interval (admin-settable, min 6h — see settings.ts).
+  //
+  // Sites in `error` are swept too. A crawl can fail for a moment — a dropped
+  // connection is enough — and a site that is only retried by hand stays frozen
+  // at whatever it last indexed, quietly serving stale metadata. Their retry is
+  // paced off the last attempt rather than the last success, which for an
+  // errored site is old or absent.
   setInterval(async () => {
     try {
       const { schema } = await import("./db/index.js");
       const { getSettings } = await import("./settings.js");
+      const { desc, eq } = await import("drizzle-orm");
       const recrawlAfterMs = (await getSettings(db)).recrawlHours * 3600_000;
       const all = await db.select().from(schema.sites);
       for (const site of all) {
-        const last = site.lastCrawledAt ? new Date(site.lastCrawledAt).getTime() : 0;
-        if (site.status === "ready" && Date.now() - last > recrawlAfterMs) {
-          console.log(`[scheduler] recrawling ${site.url}`);
+        if (site.status !== "ready" && site.status !== "error") continue;
+        let last = site.lastCrawledAt ? new Date(site.lastCrawledAt).getTime() : 0;
+        if (site.status === "error") {
+          const [latest] = await db
+            .select()
+            .from(schema.crawlJobs)
+            .where(eq(schema.crawlJobs.siteId, site.id))
+            .orderBy(desc(schema.crawlJobs.createdAt))
+            .limit(1);
+          const attempted = latest?.finishedAt ?? latest?.createdAt;
+          last = attempted ? new Date(attempted).getTime() : 0;
+        }
+        if (Date.now() - last > recrawlAfterMs) {
+          console.log(`[scheduler] recrawling ${site.url}${site.status === "error" ? " (retrying after error)" : ""}`);
           await jobs.enqueueCrawl(site.id);
         }
       }

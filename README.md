@@ -129,6 +129,8 @@ Useful API endpoints: `GET /api/search?q=…&mode=hybrid|keyword`, `GET /api/tre
 
 A tiny deterministic MyST site for testing lives in `fixtures/mystsite` (build with `../../node_modules/.bin/myst build --html` from that directory, serve with `node scripts/serve-fixture.mjs`).
 
+End-to-end checks against a running instance live in `scripts/verify.mjs`: it renders every item of every public collection (catching runtime errors and blank pages), confirms the source links MySTic builds actually resolve, and exercises the API error paths. Run `node scripts/verify.mjs`; set `MYSTIC_TOKEN` to include the access-control checks, and pass `--deep` to also report link rot inside the source content. Needs `pnpm exec playwright install chromium` once.
+
 README screenshots regenerate with `node scripts/screenshots.mjs` against a running instance (`pnpm exec playwright install chromium` once first; set `MYSTIC_TOKEN` for the signed-in shots).
 
 ## Troubleshooting
