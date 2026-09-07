@@ -139,6 +139,9 @@ interface JupyterData {
 
 const OUTPUT_IMAGE_MIMES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
+/** `<matplotlib.animation.FuncAnimation at 0x7f…>` — a repr, not the content. */
+const PLACEHOLDER_REPR = /^<[^<>]*\bat 0x[0-9a-f]+>$/i;
+
 function absolute(url: string, baseUrl: string): string {
   if (/^(https?:)?\/\//.test(url) || url.startsWith("data:")) return url;
   return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
@@ -171,11 +174,24 @@ function outputToMdast(node: MystNode, baseUrl: string): MystNode[] {
     const url = entry.path
       ? absolute(entry.path, baseUrl)
       : `data:${imageMime};base64,${(entry.content ?? "").replace(/\s+/g, "")}`;
-    return [{ type: "image", url, alt: bundle["text/plain"]?.content ?? "" }];
+    // An `image` is a phrasing node: bare in flow position it is invalid mdast,
+    // and markdown writers then mis-render the whole surrounding subtree.
+    return [
+      { type: "paragraph", children: [{ type: "image", url, alt: bundle["text/plain"]?.content ?? "" }] },
+    ];
   }
+  // Prefer the plain-text representation over the rich HTML one.
+  //
+  // A pandas or xarray HTML repr carries its whole stylesheet inline: for one
+  // section of one notebook that is 45 kB of CSS against 2 kB of actual
+  // content. These payloads are read by other builds and by retrieval agents,
+  // where that is pure noise — and every library that emits an HTML repr emits
+  // a text/plain one beside it. The exception is a display object whose plain
+  // form is only a placeholder (`<… at 0x7f…>`); there the HTML is the content.
+  const plain = bundle["text/plain"]?.content?.trim();
+  if (plain && !PLACEHOLDER_REPR.test(plain)) return [{ type: "code", lang: "text", value: plain }];
   const html = bundle["text/html"]?.content ?? bundle["image/svg+xml"]?.content;
   if (html) return [{ type: "html", value: html }];
-  const plain = bundle["text/plain"]?.content;
   return plain ? [{ type: "code", lang: "text", value: plain }] : [];
 }
 

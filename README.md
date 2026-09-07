@@ -110,7 +110,9 @@ The section is fetched at build time and spliced into your page, followed by an 
 
 **Consume a whole collection as a site.** Any public or unlisted collection is served in MyST's own format at `<api>/api/c/<slug>` — `myst.xref.json` plus one JSON document per item, with attribution prepended to each. Point any MyST tool at that URL, or register it in another MySTic instance to index a curated collection like any other site.
 
-Both surfaces flatten notebook outputs into plain mdast (images, code blocks) before handing them over, because a built site's outputs are already minified and cannot be fed back into another mystmd build as-is.
+Both surfaces flatten notebook outputs into plain mdast (images, code blocks) before handing them over, because a built site's outputs are already minified and cannot be fed back into another mystmd build as-is. Flattening prefers an output's plain-text representation over its rich HTML one: a pandas or xarray repr inlines its whole stylesheet, which is noise to a build and expensive for a retrieval agent.
+
+That makes collections readable by LLM tooling without anything extra. [docslice](https://responsible-genai-hackweek.github.io/MySTifAI/) works against a collection root unchanged — `docslice outline <api>/api/c/<slug>` lists the items, `docslice get '<item-url>#<anchor>'` returns one section as markdown. Search results carry the same `url#anchor` addressing, so a hybrid search across every indexed site hands an agent addresses it can read one section at a time.
 
 ### Privacy & data layout
 

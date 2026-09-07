@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { asc, eq } from "drizzle-orm";
-import { materializeOutputs, type MystFrontmatter, type MystNode, type XrefIndex } from "@mystic/core";
+import {
+  materializeOutputs,
+  type MystFrontmatter,
+  type MystNode,
+  type XrefIndex,
+  type XrefReference,
+} from "@mystic/core";
 import { attributionOf, embedAst, loadLivePage } from "./content.js";
 import { schema, type Db } from "./db/index.js";
 
@@ -30,6 +36,53 @@ function attributionNode(attribution: ReturnType<typeof attributionOf>): MystNod
   return { type: "paragraph", class: "mystic-attribution", children: [{ type: "emphasis", children }] };
 }
 
+/** mdast node types that carry a referenceable label, mapped to their xref kind. */
+function refKind(node: MystNode): string | null {
+  switch (node.type) {
+    case "heading":
+      return "heading";
+    case "container":
+      return typeof node.kind === "string" ? node.kind : "figure";
+    case "table":
+      return "table";
+    case "math":
+      return "equation";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Every label inside one item, as xref references.
+ *
+ * A real MyST site indexes its headings, figures, tables and equations, not
+ * just its pages, and tools rely on it: it is what lets a client resolve
+ * `<site>#some-label` without knowing which page holds it, or list every figure
+ * on a site. Emitting only page references left those lookups failing.
+ */
+function labelRefs(ast: MystNode, nodeId: string): XrefReference[] {
+  const refs: XrefReference[] = [];
+  const seen = new Set<string>();
+  const walk = (node: MystNode) => {
+    const identifier = (node.html_id ?? node.identifier) as string | undefined;
+    const kind = refKind(node);
+    if (identifier && kind && !seen.has(identifier)) {
+      seen.add(identifier);
+      refs.push({
+        kind,
+        data: `/${nodeId}.json`,
+        url: `/${nodeId}`,
+        identifier,
+        // Heading anchors are derived from the text rather than author-written.
+        ...(kind === "heading" ? { implicit: true } : {}),
+      });
+    }
+    node.children?.forEach(walk);
+  };
+  walk(ast);
+  return refs;
+}
+
 /** Changes whenever the upstream content, the anchor, or the title override does. */
 function nodeSha(node: Node, upstreamSha: string): string {
   return createHash("sha256")
@@ -54,14 +107,28 @@ export function registerMystSiteRoutes(app: FastifyInstance, db: Db): void {
   app.get<{ Params: { slug: string } }>("/api/c/:slug/myst.xref.json", async (req, reply) => {
     const loaded = await load(req.params.slug);
     if (!loaded) return reply.code(404).send({ error: "Collection not found" });
+    const items = loaded.nodes.filter((n) => n.kind !== "part" && n.siteId && n.pageSlug);
+
+    // Labels come from the same AST the item is served as, so the index can
+    // never promise an anchor the page does not have. Items are resolved in
+    // parallel and share the live-content cache; an item whose source is
+    // unreachable still gets its page reference, just without its labels.
+    const labelled = await Promise.all(
+      items.map(async (node) => {
+        const page = await loadLivePage(db, node.siteId!, node.pageSlug!).catch(() => null);
+        if (!page) return [];
+        const { mdast } = embedAst(page, node.kind === "section" ? node.anchor : null);
+        return labelRefs(mdast, node.id);
+      }),
+    );
+
     const index: XrefIndex = {
       version: "1",
       myst: "1.10.1",
       references: [
         { kind: "page", data: "/index.json", url: "/" },
-        ...loaded.nodes
-          .filter((n) => n.kind !== "part")
-          .map((n) => ({ kind: "page", data: `/${n.id}.json`, url: `/${n.id}` })),
+        ...items.map((n) => ({ kind: "page", data: `/${n.id}.json`, url: `/${n.id}` })),
+        ...labelled.flat(),
       ],
     };
     return reply.send(index);
