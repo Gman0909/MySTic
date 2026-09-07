@@ -1,0 +1,9 @@
+{
+  "name": "@mystic/myst-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "mystmd plugin: embed sections curated in MySTic into your own MyST site",
+  "main": "./mystic.mjs",
+  "files": ["mystic.mjs"]
+}

@@ -12,9 +12,10 @@ MySTic is a self-hosted search and curation engine for the MyST ecosystem, built
 
 - **Federated search** — Meilisearch hybrid search (keyword + local embeddings) at section granularity across every indexed site, with facets and MyST-style hover previews of live content.
 - **Knowledge tree** — a cross-site concept map built by clustering section embeddings; labels via TF-IDF, or Claude-written when an Anthropic API key is configured.
-- **Collections** — curate pages and sections into mini-MyST sites (`/c/<slug>`) with custom names, descriptions, and drag-and-drop tables of contents. Content is embedded **by reference** and fetched live from the source (with a short cache and an offline fallback), so upstream edits appear without recrawling. Every page carries a source-attribution banner with authors and license.
+- **Collections** — curate pages and sections into mini-MyST sites (`/c/<slug>`) with custom names, descriptions, and drag-and-drop tables of contents, presented as a table of contents or as a **tag-filterable gallery** of cards (thumbnails, authors and tags come from the source sites' frontmatter). Layout is set per **part** as well as per collection, so one collection can read as an ordered sequence where that helps and browse as a gallery where it does not. Content is embedded **by reference** and fetched live from the source (with a short cache and an offline fallback), so upstream edits appear without recrawling. Every page carries a source-attribution banner with authors and license.
 - **Sharing** — collections are public, unlisted, or private; any viewable collection can be forked. Users can enable a public profile at `/u/<handle>` listing their public collections.
 - **Accounts & admin** — email/password accounts (scrypt-hashed) and optional **GitHub sign-in**; password change plus **recovery codes** (shown once at registration, rotatable from Account settings) for email-free password resets — no mail server required. The first account registered becomes the instance administrator and can manage sites, users (including issuing recovery codes), and instance settings (recrawl interval, cache TTL, AI labeling on/off, registration open/closed, OAuth).
+- **Feeds other MyST sites** — every collection is *also* served as a MyST site (`myst.xref.json` + per-item JSON at `<api>/api/c/<slug>`), so any MyST tool can consume it — MySTic's own crawler included. And the [`{mystic}` directive](packages/myst-plugin/README.md) drops a section from any indexed site straight into **your** MyST build, with attribution attached.
 - **Local-first AI** — embeddings run locally (bge-small via transformers.js); the only optional external AI call is concept labeling, and local mode is the default whenever no API key is configured.
 
 ## Screenshots
@@ -87,10 +88,29 @@ pnpm + Turborepo monorepo:
 | `packages/core` | Shared types, zod schemas, MyST AST utilities |
 | `packages/crawler` | MyST site discovery, polite AST fetching, section extraction |
 | `packages/ontology` | Local embeddings (transformers.js), k-means clustering, labeling |
+| `packages/myst-plugin` | mystmd plugin: the `{mystic}` directive, for embedding into other MyST sites |
 
 Storage: **PGlite** (embedded Postgres + pgvector, in `.data/pglite/` — zero setup) and **Meilisearch** (binary in `.meili/`). For a real deployment see **[DEPLOYMENT.md](DEPLOYMENT.md)** — Netlify-hosted frontend + a docker-compose backend stack (`deploy/backend/`) behind Caddy with automatic HTTPS.
 
 Container images are **built, smoke-tested (health + registration + search against real Postgres/Meilisearch), and published by CI** on every push to main: `ghcr.io/gman0909/mystic-api` and `ghcr.io/gman0909/mystic-web` (`:latest` or a commit SHA). Note the web image bakes `NEXT_PUBLIC_API_URL` at build time — rebuild it with your own API URL for a real deployment.
+
+### Using MySTic from your own MyST site
+
+MySTic is a destination — a search engine and a place to publish collections — but it is also infrastructure other MyST sites can build on. Two ways in:
+
+**Embed a section into your own build.** Copy `packages/myst-plugin/mystic.mjs` into your project, list it under `project.plugins` in `myst.yml`, and point the directive at any page or section of a site your instance indexes:
+
+```markdown
+:::{mystic} https://foundations.projectpythia.org/core.xarray.xarray-intro#introducing-the-dataarray-and-dataset
+:api: https://mystic.example
+:::
+```
+
+The section is fetched at build time and spliced into your page, followed by an attribution line. If the instance is unreachable or the anchor no longer exists, the build warns rather than fails. See the [plugin README](packages/myst-plugin/README.md).
+
+**Consume a whole collection as a site.** Any public or unlisted collection is served in MyST's own format at `<api>/api/c/<slug>` — `myst.xref.json` plus one JSON document per item, with attribution prepended to each. Point any MyST tool at that URL, or register it in another MySTic instance to index a curated collection like any other site.
+
+Both surfaces flatten notebook outputs into plain mdast (images, code blocks) before handing them over, because a built site's outputs are already minified and cannot be fed back into another mystmd build as-is.
 
 ### Privacy & data layout
 

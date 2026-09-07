@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@mystic/core": "workspace:*",
+    "dompurify": "^3.2.4",
     "katex": "^0.16.18",
     "next": "^15.1.3",
     "react": "^19.0.0",

@@ -123,6 +123,7 @@ export async function migrate(db: Db): Promise<void> {
     );
   `);
   await db.execute(sql`ALTER TABLE collections ADD COLUMN IF NOT EXISTS owner_id text;`);
+  await db.execute(sql`ALTER TABLE collections ADD COLUMN IF NOT EXISTS layout text NOT NULL DEFAULT 'list';`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS collection_nodes (
       id text PRIMARY KEY,
@@ -138,6 +139,7 @@ export async function migrate(db: Db): Promise<void> {
     );
   `);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS collection_nodes_coll_idx ON collection_nodes (collection_id);`);
+  await db.execute(sql`ALTER TABLE collection_nodes ADD COLUMN IF NOT EXISTS layout text;`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS crawl_jobs (
       id text PRIMARY KEY,

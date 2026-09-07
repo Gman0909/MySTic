@@ -161,6 +161,12 @@ export default function CollectionEditor() {
     await load();
   };
 
+  /** Parts can override the collection's layout for their own children. */
+  const setPartLayout = async (node: TreeItem, layout: "list" | "gallery" | null) => {
+    await api(`/api/collections/${id}/nodes/${node.id}`, { method: "PATCH", body: JSON.stringify({ layout }) });
+    await load();
+  };
+
   const removeNode = async (node: TreeItem) => {
     if (!confirm(`Remove "${node.title ?? node.pageSlug}" from the collection?`)) return;
     await api(`/api/collections/${id}/nodes/${node.id}`, { method: "DELETE" });
@@ -176,7 +182,10 @@ export default function CollectionEditor() {
 
   // Meta fields auto-save: debounced while typing, immediate for selects.
   const metaTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const updateMeta = (fields: Partial<Pick<CollectionWithNodes, "name" | "description" | "visibility">>, immediate = false) => {
+  const updateMeta = (
+    fields: Partial<Pick<CollectionWithNodes, "name" | "description" | "visibility" | "layout">>,
+    immediate = false,
+  ) => {
     setColl((prev) => (prev ? { ...prev, ...fields } : prev));
     setSaved(false);
     clearTimeout(metaTimer.current);
@@ -189,6 +198,7 @@ export default function CollectionEditor() {
               name: current.name || "Untitled collection",
               description: current.description,
               visibility: current.visibility,
+              layout: current.layout,
             }),
           }).then(() => setSaved(true));
         }
@@ -236,6 +246,18 @@ export default function CollectionEditor() {
       <span className="edit-kind badge plain" title={kindHelp[node.kind]}>{node.kind}</span>
       <span className="edit-title">{node.title ?? node.pageSlug ?? "Untitled"}</span>
       {node.anchor && <span className="muted">#{node.anchor}</span>}
+      {node.kind === "part" && (
+        <select
+          className="edit-part-layout"
+          value={node.layout ?? ""}
+          onChange={(e) => void setPartLayout(node, (e.target.value || null) as "list" | "gallery" | null)}
+          title="How this part's items are presented on the landing page"
+        >
+          <option value="">Default ({coll.layout})</option>
+          <option value="list">List</option>
+          <option value="gallery">Gallery</option>
+        </select>
+      )}
       <span className="edit-controls">{controls}</span>
     </div>
   );
@@ -267,6 +289,14 @@ export default function CollectionEditor() {
             <option value="public">Public (listed for everyone)</option>
             <option value="private">Private (only you)</option>
           </select>
+          <select
+            value={coll.layout}
+            onChange={(e) => updateMeta({ layout: e.target.value as CollectionWithNodes["layout"] }, true)}
+            title="How the landing page presents the contents"
+          >
+            <option value="list">Default layout: list</option>
+            <option value="gallery">Default layout: gallery</option>
+          </select>
           <span className="muted" style={{ fontSize: "0.82rem" }}>{saved ? "All changes saved" : "Saving…"}</span>
           <a href={`/c/${coll.slug}`} target="_blank" rel="noreferrer">
             <button>View site ↗</button>
@@ -281,7 +311,9 @@ export default function CollectionEditor() {
         a whole source page; <strong>sections</strong> embed just one section of a source page. Pages and sections are
         always leaves — only parts can contain items, so to build hierarchy around a page, add a part and nest under
         it. Drag rows to rearrange: drop onto the lower half of a part to nest inside it, or onto the top half of any
-        row to place before it. Add content from the <a href="/search">search page</a>.
+        row to place before it. Each part can present its items as a <strong>list</strong> or a <strong>gallery</strong>
+        of cards, independently of the collection default — so one collection can read as a sequence in places and browse
+        as a gallery in others. Add content from the <a href="/search">search page</a>.
       </p>
       <button onClick={addPart}>+ Add part</button>
       <div className="edit-tree">

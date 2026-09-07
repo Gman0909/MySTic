@@ -1198,3 +1198,170 @@ tr:last-child td {
   max-height: 8rem;
   overflow: hidden;
 }
+
+/* --- notebook outputs ---------------------------------------------------- */
+
+.myst-outputs {
+  margin: 0.4rem 0 1.4rem;
+  border-left: 3px solid var(--border);
+  padding-left: 0.9rem;
+}
+
+.myst-output-img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.myst-output-text,
+.myst-output-stream,
+.myst-output-error {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.myst-output-stream.stderr {
+  border-color: var(--danger);
+}
+
+.myst-output-error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.myst-output-unsupported {
+  font-size: 0.85rem;
+}
+
+/* Rich HTML reprs (pandas, xarray) — sanitised, and clipped so a wide table
+   scrolls inside the column instead of stretching the page. */
+.myst-output-html {
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+
+.myst-output-html table {
+  border-collapse: collapse;
+}
+
+.myst-output-html th,
+.myst-output-html td {
+  border: 1px solid var(--border);
+  padding: 0.2rem 0.5rem;
+}
+
+/* --- collection gallery layout ------------------------------------------- */
+
+.gallery-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 1.2rem 0 1.6rem;
+}
+
+.tag-chip {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.tag-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tag-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 1rem;
+  /* Cards hug their content: a card without a thumbnail shouldn't stretch to
+     match a neighbour that has one. */
+  align-items: start;
+}
+
+.gallery-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  color: inherit;
+}
+
+.gallery-card:hover {
+  border-color: var(--accent);
+  text-decoration: none;
+}
+
+.gallery-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  /* MyST thumbnails are usually project logos, not photography — cropping them
+     to fill mangles the wordmark, so letterbox instead. */
+  object-fit: contain;
+  background: var(--bg);
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.gallery-card-body {
+  padding: 0.8rem 0.9rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.gallery-card-body h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--accent);
+}
+
+.gallery-desc {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.gallery-meta {
+  font-size: 0.78rem;
+  margin-top: auto;
+}
+
+.gallery-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+}
+
+/* A run of the landing page: one part, or the ungrouped items between parts. */
+.coll-section {
+  margin-bottom: 2.4rem;
+}
+
+.coll-section > h2 {
+  margin-bottom: 0.6rem;
+}
+
+.edit-part-layout {
+  font-size: 0.78rem;
+  padding: 0.1rem 0.3rem;
+  margin-left: 0.4rem;
+}

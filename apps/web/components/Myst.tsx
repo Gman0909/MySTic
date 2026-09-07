@@ -21,6 +21,46 @@ function resolveUrl(url: string | undefined, ctx: Ctx): string {
   return `${ctx.baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
+/** A link URL that is plainly an email address but carries no scheme. */
+const EMAIL_LIKE = /^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/;
+
+/**
+ * Images in an aggregated page point at assets on someone else's site, and
+ * those rot: a rebuild changes the hash, or the source build failed to fetch
+ * the original in the first place. mystmd keeps the original remote URL in
+ * `urlSource`, so fall back to it before giving up.
+ */
+function Image_({ node, ctx }: { node: MystNode; ctx: Ctx }) {
+  const primary = resolveUrl(node.url as string, ctx);
+  const fallback = typeof node.urlSource === "string" ? node.urlSource : null;
+  const [src, setSrc] = React.useState(primary);
+  const [failed, setFailed] = React.useState(false);
+
+  // A new node (navigation) must reset the retry state.
+  React.useEffect(() => {
+    setSrc(primary);
+    setFailed(false);
+  }, [primary]);
+
+  if (failed) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={(node.alt as string) ?? ""}
+      className="myst-img"
+      // Aggregated pages can carry a lot of full-size photography from the
+      // source site; don't pull it all down before the reader scrolls there.
+      loading="lazy"
+      style={node.width ? { width: node.width as string } : undefined}
+      onError={() => {
+        if (fallback && src !== fallback) setSrc(fallback);
+        else setFailed(true);
+      }}
+    />
+  );
+}
+
 function Math_({ value, inline }: { value: string; inline: boolean }) {
   let html: string;
   try {
@@ -33,6 +73,107 @@ function Math_({ value, inline }: { value: string; inline: boolean }) {
   ) : (
     <div className="myst-math" dangerouslySetInnerHTML={{ __html: html }} />
   );
+}
+
+/** One entry of a Jupyter mime bundle as mystmd serialises it. */
+interface MimeData {
+  content_type: string;
+  /** Inline payload (text/*, image/svg+xml). */
+  content?: string;
+  /** Site-relative path to an extracted binary asset (image/png, …). */
+  path?: string;
+}
+
+interface JupyterData {
+  output_type: string;
+  name?: string;
+  text?: string | string[];
+  ename?: string;
+  evalue?: string;
+  traceback?: string | string[];
+  data?: Record<string, MimeData>;
+}
+
+const IMAGE_MIMES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+/** Tracebacks arrive with terminal colour codes. */
+function stripAnsi(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\u001b\[[0-9;]*m/g, "");
+}
+
+function joinText(text: string | string[] | undefined): string {
+  return Array.isArray(text) ? text.join("") : text ?? "";
+}
+
+/**
+ * Jupyter's schema says `traceback` is a list of frames, but mystmd serialises
+ * it as one pre-joined string. Accept either.
+ */
+function joinLines(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value.join("\n") : value ?? "";
+}
+
+/**
+ * Rich HTML outputs (pandas/xarray reprs) come from third-party sites, so they
+ * are sanitised before injection. DOMPurify is loaded lazily and only in the
+ * browser: the output renders nothing until then rather than risking unsanitised
+ * markup during SSR.
+ */
+function HtmlOutput({ html }: { html: string }) {
+  const [clean, setClean] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let alive = true;
+    void import("dompurify").then((mod) => {
+      if (alive) setClean(mod.default.sanitize(html));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [html]);
+  if (clean === null) return null;
+  return <div className="myst-output-html" dangerouslySetInnerHTML={{ __html: clean }} />;
+}
+
+/** Render the richest representation available in a mime bundle. */
+function MimeBundle({ data, ctx }: { data: Record<string, MimeData>; ctx: Ctx }) {
+  const image = IMAGE_MIMES.find((mime) => data[mime]?.path || data[mime]?.content);
+  if (image) {
+    const entry = data[image]!;
+    const src = entry.path
+      ? resolveUrl(entry.path, ctx)
+      : `data:${image};base64,${(entry.content ?? "").replace(/\s+/g, "")}`;
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt={data["text/plain"]?.content ?? "Output"} className="myst-output-img" />;
+  }
+  // Large HTML/SVG reprs are extracted to a file upstream (`path`, no
+  // `content`); those can't be fetched from here (no CORS), so they fall
+  // through to the plain-text representation below.
+  const html = data["text/html"]?.content ?? data["image/svg+xml"]?.content;
+  if (html) return <HtmlOutput html={html} />;
+  const plain = data["text/plain"]?.content;
+  if (plain) return <pre className="myst-output-text">{plain}</pre>;
+  const kinds = Object.keys(data).join(", ");
+  return <p className="muted myst-output-unsupported">Output not shown here ({kinds || "no data"}) — view on the source site.</p>;
+}
+
+function Output({ node, ctx }: { node: MystNode; ctx: Ctx }) {
+  // Newer mystmd may pre-convert an output into child nodes; prefer those.
+  if (node.children?.length) return <>{children(node, ctx)}</>;
+  const data = node.jupyter_data as JupyterData | undefined;
+  if (!data) return null;
+  switch (data.output_type) {
+    case "stream":
+      return (
+        <pre className={`myst-output-stream${data.name === "stderr" ? " stderr" : ""}`}>{joinText(data.text)}</pre>
+      );
+    case "error": {
+      const traceback = stripAnsi(joinLines(data.traceback));
+      return <pre className="myst-output-error">{traceback || `${data.ename ?? "Error"}: ${data.evalue ?? ""}`}</pre>;
+    }
+    default:
+      return data.data ? <MimeBundle data={data.data} ctx={ctx} /> : null;
+  }
 }
 
 function children(node: MystNode, ctx: Ctx): React.ReactNode {
@@ -59,12 +200,17 @@ function Node({ node, ctx }: { node: MystNode; ctx: Ctx }): React.ReactNode {
       return <abbr title={(node.title as string) ?? undefined}>{children(node, ctx)}</abbr>;
     case "inlineCode":
       return <code>{node.value}</code>;
-    case "link":
+    case "link": {
+      const raw = (node.url as string) ?? "";
+      // Docs often write a bare address; without a scheme it would resolve
+      // against the source site and 404.
+      const href = EMAIL_LIKE.test(raw) ? `mailto:${raw}` : resolveUrl(raw, ctx);
       return (
-        <a href={resolveUrl(node.url as string, ctx)} target="_blank" rel="noreferrer">
+        <a href={href} target="_blank" rel="noreferrer">
           {children(node, ctx)}
         </a>
       );
+    }
     case "crossReference": {
       const href = node.url ? resolveUrl(node.url as string, ctx) : `${ctx.baseUrl}#${node.identifier ?? ""}`;
       return (
@@ -94,15 +240,7 @@ function Node({ node, ctx }: { node: MystNode; ctx: Ctx }): React.ReactNode {
         </pre>
       );
     case "image":
-      return (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={resolveUrl(node.url as string, ctx)}
-          alt={(node.alt as string) ?? ""}
-          className="myst-img"
-          style={node.width ? { width: node.width as string } : undefined}
-        />
-      );
+      return <Image_ node={node} ctx={ctx} />;
     case "container":
       return <figure className={`myst-figure myst-${node.kind ?? "figure"}`}>{children(node, ctx)}</figure>;
     case "caption":
@@ -165,6 +303,10 @@ function Node({ node, ctx }: { node: MystNode; ctx: Ctx }): React.ReactNode {
     case "cite":
     case "citeGroup":
       return <span className="myst-cite">{node.children?.length ? children(node, ctx) : (node.label as string)}</span>;
+    case "outputs":
+      return node.children?.length ? <div className="myst-outputs">{children(node, ctx)}</div> : null;
+    case "output":
+      return <Output node={node} ctx={ctx} />;
     case "iframe":
       return (
         <p>
